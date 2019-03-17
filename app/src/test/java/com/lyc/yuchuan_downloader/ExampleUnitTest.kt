@@ -1,4 +1,4 @@
-package com.swarmart.yuchuan_downloader
+package com.lyc.yuchuan_downloader
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

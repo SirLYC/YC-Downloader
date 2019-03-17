@@ -1,4 +1,4 @@
-package com.swarmart.yuchuan_downloader
+package com.lyc.yuchuan_downloader
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity

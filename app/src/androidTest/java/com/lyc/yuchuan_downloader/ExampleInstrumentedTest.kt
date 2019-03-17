@@ -1,4 +1,4 @@
-package com.swarmart.yuchuan_downloader
+package com.lyc.yuchuan_downloader
 
 import androidx.test.InstrumentationRegistry
 import androidx.test.runner.AndroidJUnit4

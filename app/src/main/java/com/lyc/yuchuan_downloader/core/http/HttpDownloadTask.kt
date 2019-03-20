@@ -64,8 +64,22 @@ class HttpDownloadTask(
                         return
                     }
 
+                    var contentLength = body.contentLength()
+                    if (contentLength <= 0) {
+
+                        contentLength = resp.header("Content-Range")?.let { contentRange ->
+                            val index = contentRange.lastIndexOf('/')
+                            if (index != -1) {
+                                kotlin.runCatching {
+                                    contentRange.substring(index).toLong()
+                                }.getOrNull()
+                            } else null
+                        } ?: -1
+                    } else {
+                        contentLength += bakFile.length()
+                    }
                     val readResult =
-                        readToFile(body.byteStream(), bakFile, body.contentLength(), bakFile.length())
+                        readToFile(body.byteStream(), bakFile, contentLength, bakFile.length())
                     if (readResult) {
                         bakFile.renameTo(file)
                         downloadCallback.onProgressUpdate(this@HttpDownloadTask)

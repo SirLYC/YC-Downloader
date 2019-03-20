@@ -109,44 +109,46 @@ abstract class DownloadTask(
     fun pause() = state.compareAndSet(DOWNLOADING, PAUSING)
 
     @WorkerThread
-    protected fun readToFile(source: InputStream, bakFile: File, total: Long, alreadyWrite: Long) =
-        runCatching {
+    protected fun readToFile(source: InputStream, bakFile: File, total: Long, alreadyWrite: Long): Boolean {
+        return kotlin.runCatching {
             WorkerPool.main.execute {
                 downloadCallback.onProgressUpdate(this@DownloadTask, bakFile.length(), total, "-", "-")
             }
-            val sink = FileOutputStream(bakFile, true)
-            var read = 1
-            var write = alreadyWrite
-            val bytes = ByteArray(1024)
-            while (read > 0) {
-                val st = state.get()
-                if (st != DOWNLOADING) {
-                    throw InterruptedException()
-                }
-                val startTime = System.nanoTime()
-                read = source.read(bytes)
-                if (read > 0) {
-                    write += read
-                    val speed = read.toFloat() / ((System.nanoTime() - startTime) / 10e9)
-                    val left = if (total != -1L) {
-                        ((total - write) / speed).toFloat().toTime()
-                    } else {
-                        "未知"
+            val os = FileOutputStream(bakFile, bakFile.exists())
+            os.use { sink ->
+                var read = 1
+                var write = alreadyWrite
+                val bytes = ByteArray(1024)
+                while (read > 0) {
+                    val st = state.get()
+                    if (st != DOWNLOADING) {
+                        throw InterruptedException()
                     }
-                    sink.write(bytes, 0, read)
-                    WorkerPool.main.execute {
-                        downloadCallback.onProgressUpdate(
-                            this@DownloadTask,
-                            write,
-                            total,
-                            speed.toFloat().toSpeed(),
-                            left
-                        )
+                    val startTime = System.nanoTime()
+                    read = source.read(bytes)
+                    if (read > 0) {
+                        sink.write(bytes, 0, read)
+                        write += read
+                        val speed = read.toFloat() / ((System.nanoTime() - startTime) / 10e9)
+                        val left = if (total != -1L) {
+                            ((total - write) / speed).toFloat().toTime()
+                        } else {
+                            "未知"
+                        }
+                        WorkerPool.main.execute {
+                            downloadCallback.onProgressUpdate(
+                                this@DownloadTask,
+                                write,
+                                total,
+                                speed.toFloat().toSpeed(),
+                                left
+                            )
+                        }
                     }
                 }
             }
         }.isSuccess
-
+    }
 
     interface DownloadCallback {
         fun onTaskCreateFail(t: Throwable)

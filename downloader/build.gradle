@@ -1,21 +1,15 @@
-apply plugin: 'com.android.application'
-
-apply plugin: 'kotlin-android'
-
-apply plugin: 'kotlin-android-extensions'
-
-apply plugin: 'kotlin-kapt'
+apply plugin: 'com.android.library'
 
 android {
     compileSdkVersion buildInfo['compileSdkVersion']
     defaultConfig {
-        applicationId "com.lyc.yuchuan_downloader"
         minSdkVersion buildInfo['minSdkVersion']
         targetSdkVersion buildInfo['targetSdkVersion']
         versionCode buildInfo['versionCode']
         versionName buildInfo['versionName']
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
+
     buildTypes {
         release {
             minifyEnabled false
@@ -24,22 +18,15 @@ android {
     }
 
     compileOptions {
-        targetCompatibility = "8"
-        sourceCompatibility = "8"
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
 }
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation deps['kotlin-stdlib']
-    implementation deps['appcompact']
     implementation deps['core']
-    implementation deps['constraintlayout']
     implementation deps['okhttp']
-    implementation deps['room']
-    implementation deps['material']
-    kapt deps['room-compiler']
-
     testImplementation deps['junit']
     androidTestImplementation deps['runner']
     androidTestImplementation deps['epresso']

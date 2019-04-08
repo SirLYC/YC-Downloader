@@ -51,4 +51,8 @@ dependencies {
     androidTestImplementation deps['test-core']
     androidTestImplementation deps['runner']
     androidTestImplementation deps['epresso']
+
+    if (runAlone) {
+        implementation deps['appcompact']
+    }
 }

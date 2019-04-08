@@ -7,7 +7,6 @@ package com.lyc.downloader;
  */
 public class Segment {
     public final byte[] buffer;
-    public final int bufferSize;
     public int readSize;
     public long startPos;
 
@@ -17,6 +16,5 @@ public class Segment {
         } else {
             this.buffer = new byte[bufferSize];
         }
-        this.bufferSize = bufferSize;
     }
 }

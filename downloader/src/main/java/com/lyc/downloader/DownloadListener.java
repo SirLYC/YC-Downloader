@@ -6,5 +6,24 @@ package com.lyc.downloader;
  * @email kevinliu.sir@qq.com
  */
 public interface DownloadListener {
+    void onPrepared();
 
+    // cur, total: byte
+    void onProgressUpdate(long cur, long total);
+
+    void onSpeedChange(double bps);
+
+    void onDownloadError(String reason);
+
+    void onDownloadStart();
+
+    void onDownloadPausing();
+
+    void onDownloadPaused();
+
+    void onDownloadCancelling();
+
+    void onDownloadCanceled();
+
+    void onDownloadFinished();
 }

@@ -15,5 +15,10 @@ public class DownloadExecutors {
 
     private static AtomicInteger ioId = new AtomicInteger(1);
 
-    public static Executor io = Executors.newCachedThreadPool(r -> new Thread(PREFIX + ioId.getAndIncrement()));
+    public static Executor io = Executors.newCachedThreadPool(r -> new Thread(PREFIX + ioId.getAndIncrement()) {
+        @Override
+        public void run() {
+            r.run();
+        }
+    });
 }

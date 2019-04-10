@@ -110,10 +110,10 @@ public class DownloadTask {
             }
         }
         RequestBuilder.url(url);
-        // returns 206 if it supports resume
+        // returns 206 if it supports resume or 200 not support
         pivotRequest = new Request.Builder()
                 .url(url)
-                .addHeader("Range", "bytes=0-")
+                .addHeader("If-Range", "bytes=0-")
                 .build();
         downloadPosPresent = false;
         totalLen = -1;
@@ -387,7 +387,7 @@ public class DownloadTask {
         @Override
         public void run() {
             Request request;
-            if (contentLen > 0) {
+            if (contentLen > 0 && resumable) {
                 request = RequestBuilder.addHeader("Range", "bytes=" + currentPos + "-" + (startPos + contentLen - 1)).build();
             } else if (resumable) {
                 request = RequestBuilder.addHeader("Range", "bytes=" + currentPos + "-").build();

@@ -13,7 +13,7 @@ public interface DownloadListener {
 
     void onSpeedChange(double bps);
 
-    void onDownloadError(String reason);
+    void onDownloadError(String reason, boolean fatal);
 
     void onDownloadStart();
 

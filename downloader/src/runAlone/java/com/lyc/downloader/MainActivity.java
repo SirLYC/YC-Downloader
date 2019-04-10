@@ -38,7 +38,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
         @Override
         public void onProgressUpdate(long cur, long total) {
-            runOnUiThread(() -> progressBar.setProgress((int) (cur * 1000.0 / total)));
+            if (total == -1) {
+                progressBar.setProgress(0);
+            } else {
+                runOnUiThread(() -> progressBar.setProgress((int) (cur * 1000.0 / total)));
+            }
         }
 
         @Override
@@ -51,8 +55,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
         }
 
         @Override
-        public void onDownloadError(String reason) {
-            runOnUiThread(() -> stateTextView.setText(("error : " + reason)));
+        public void onDownloadError(String reason, boolean fatal) {
+            runOnUiThread(() -> stateTextView.setText(("error : " + reason + ", fatal : " + fatal)));
         }
 
         @Override

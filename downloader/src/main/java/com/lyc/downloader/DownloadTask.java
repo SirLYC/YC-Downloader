@@ -12,14 +12,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * @author liuyuchuan
  * @date 2019/4/1
  * @email kevinliu.sir@qq.com
  */
+// TODO 2019/4/10 @liuyuchuan: 处理服务器文件发生改变的情况
 public class DownloadTask {
 
     public static final int PENDING = 0;
@@ -32,17 +31,20 @@ public class DownloadTask {
     public static final int CANCELLING = 7;
     public static final int CANCELED = 8;
     public static final int ERROR = 9;
+    // this state should not be resumed
+    public static final int FATAL_ERROR = 10;
 
-    // int bytes
+    // in bytes
     private static final int MAX_BUFFER = 1 << 20;
     private static final int MIN_BUFFER = 4 * (2 << 10);
 
     private static final int MAX_DOWNLOAD_THREAD = 4;
 
-    protected final String url;
-    protected final String path;
-    protected final Map<String, String> customerHeaders;
+    public final String url;
+    public final String path;
+    private final Map<String, String> customerHeaders;
     private final AtomicInteger state = new AtomicInteger(PENDING);
+    private final DownloadError downloadError = DownloadError.instance();
     private Request.Builder RequestBuilder;
     private File downloadFile;
     private int downloadThreadCount = 1;
@@ -54,8 +56,6 @@ public class DownloadTask {
     private long totalLen;
     private boolean downloadPosPresent = false;
     private boolean resumable = false;
-    private ReentrantLock lock = new ReentrantLock();
-    private Condition resume = lock.newCondition();
     private WriteToDiskRunnable writeToDiskRunnable;
     private DownloadRunnable[] downloadRunnables;
     private final DownloadListener downloadListener;
@@ -90,14 +90,13 @@ public class DownloadTask {
     private boolean prepare() {
         File targetFile = new File(path);
         if (targetFile.exists()) {
-            reportError(Constants.ERROR_EXIST);
+            reportError(DownloadError.ERROR_FILE_EXITS);
             return false;
         }
 
-
         File dir = targetFile.getParentFile();
         if (dir == null || (!dir.exists() && !dir.mkdirs())) {
-            reportError(Constants.ERROR_CREATED_DIR);
+            reportError(DownloadError.ERROR_CREATE_DIR);
             return false;
         }
         RequestBuilder = new Request.Builder();
@@ -111,6 +110,7 @@ public class DownloadTask {
             }
         }
         RequestBuilder.url(url);
+        // returns 206 if it supports resume
         pivotRequest = new Request.Builder()
                 .url(url)
                 .addHeader("Range", "bytes=0-")
@@ -139,11 +139,12 @@ public class DownloadTask {
     }
 
     @WorkerThread
-    private void execute() {
+    public void execute() {
         if (BuildConfig.DEBUG) {
             Log.d(Constants.DEBUG_TAG, "execute: " + url);
         }
         int s = state.get();
+        // 如果是从暂停或者错误中恢复，不需要再重试
         boolean resuming = (s == PAUSED || s == ERROR) && resumable;
         if (!resuming && s != PREPARING) {
             state.compareAndSet(s, PREPARING);
@@ -151,7 +152,6 @@ public class DownloadTask {
                 return;
 
             if (!initDownloadInfo()) {
-                reportError(Constants.ERROR_DOWNLOAD_FAIL);
                 return;
             }
         }
@@ -171,7 +171,11 @@ public class DownloadTask {
             DownloadExecutors.io.execute(downloadRunnable);
         }
 
-        downloadListener.onDownloadStart();
+        if (resuming) {
+            downloadListener.onProgressUpdate(writeToDiskRunnable.downloadedSize, totalLen);
+        } else {
+            downloadListener.onDownloadStart();
+        }
         writeToDiskRunnable.run();
     }
 
@@ -189,11 +193,12 @@ public class DownloadTask {
                 pivotCall.cancel();
                 pivotCall = null;
             }
+            reportError(DownloadError.ERROR_NETWORK);
             return false;
         }
 
         pivotCall = null;
-        resumable = response.isSuccessful();
+        resumable = response.code() == 206;
         long bufferSize;
         if (resumable) {
             ResponseBody body = response.body();
@@ -202,6 +207,23 @@ public class DownloadTask {
             }
             // multi thread with resuming
             totalLen = body.contentLength();
+            if (totalLen == -1) {
+                String contentRange = response.header("Content-Rang");
+                if (contentRange != null) {
+                    int index = contentRange.lastIndexOf('/');
+                    if (index != -1) {
+                        String len = contentRange.substring(index);
+                        try {
+                            totalLen = Long.parseLong(len);
+                        } catch (NumberFormatException e) {
+                            totalLen = -1;
+                        }
+                    }
+                }
+            }
+
+            // 选择bufferSize
+            // 尽可能让进度条能多动，但下载缓冲区不至于太小或太大
             bufferSize = totalLen / 100L;
             if (bufferSize < MIN_BUFFER) {
                 bufferSize = MIN_BUFFER;
@@ -209,6 +231,8 @@ public class DownloadTask {
                 bufferSize = MAX_BUFFER;
             }
 
+            // 选择合适的线程数，每个线程能多做事
+            // 如果每个线程做的事太少了，减少线程数
             int threadCnt;
             for (threadCnt = MAX_DOWNLOAD_THREAD; threadCnt >= 1; threadCnt--) {
                 int readCnt = 100 / threadCnt;
@@ -217,10 +241,13 @@ public class DownloadTask {
                 }
             }
             downloadThreadCount = threadCnt;
-        } else {
+        } else if (response.isSuccessful()) {
             // single thread with out resuming
             downloadThreadCount = 1;
             bufferSize = MAX_BUFFER;
+        } else {
+            reportError(DownloadError.ERROR_NETWORK);
+            return false;
         }
 
         if (!downloadPosPresent) {
@@ -281,20 +308,23 @@ public class DownloadTask {
         }
     }
 
-    private void reportError(String info) {
+    private void reportError(int code) {
         int s = state.get();
-        if (s != ERROR && state.compareAndSet(s, ERROR)) {
-            // TODO: 2019/4/7 dispatch error information here
-            if (BuildConfig.DEBUG) {
-                Log.e(Constants.DEBUG_TAG, info);
-            }
-            downloadListener.onDownloadError(info);
+        if (s == ERROR || s == FATAL_ERROR) {
+            return;
+        }
+
+        boolean fatal = downloadError.isFatal(code);
+        if (!fatal && state.compareAndSet(s, ERROR)) {
+            downloadListener.onDownloadError(downloadError.translate(code), false);
+        } else if (fatal && state.compareAndSet(s, FATAL_ERROR)) {
+            downloadListener.onDownloadError(downloadError.translate(code), true);
         }
     }
 
     private boolean preAllocation() {
         if (downloadFile == null) {
-            reportError(Constants.ERROR_WRITE_FILE);
+            reportError(DownloadError.ERROR_WRITE_FILE);
             return false;
         }
         if (downloadFile.exists() || totalLen == -1) {
@@ -396,7 +426,7 @@ public class DownloadTask {
                 if (BuildConfig.DEBUG) {
                     Log.d(Constants.DEBUG_TAG, "connect fail " + "id : " + id + " retry count " + retryCount);
                 }
-                reportError(Constants.ERROR_CONNECT);
+                reportError(DownloadError.ERROR_NETWORK);
                 return;
             }
 
@@ -433,7 +463,7 @@ public class DownloadTask {
                 } catch (IOException e) {
                     s = state.get();
                     if (s != PAUSING && s != PAUSED && s != CANCELED && s != CANCELLING) {
-                        reportError(Constants.ERROR_DOWNLOAD_FAIL);
+                        reportError(DownloadError.ERROR_DOWNLOAD_FAIL);
                         if (BuildConfig.DEBUG) {
                             e.printStackTrace();
                         }
@@ -463,7 +493,7 @@ public class DownloadTask {
                 if (BuildConfig.DEBUG) {
                     Log.e(Constants.DEBUG_TAG, "preAllocation failed");
                 }
-                reportError(Constants.ERROR_SPACE_FULL);
+                reportError(DownloadError.ERROR_SPACE_FULL);
                 return;
             }
 
@@ -482,11 +512,11 @@ public class DownloadTask {
                             downloadListener.onDownloadCanceled();
                         }
                         return;
-                    } else if (s == ERROR) {
+                    } else if (s >= ERROR) {
                         return;
                     } else if (s != RUNNING) {
                         if (BuildConfig.DEBUG) {
-                            reportError("未知错误");
+                            reportError(DownloadError.ERROR_DOWNLOAD_FAIL);
                             return;
                         }
                     }
@@ -511,7 +541,7 @@ public class DownloadTask {
                             downloadedSize += segment.readSize;
                             downloadListener.onProgressUpdate(downloadedSize, totalLen);
                         } catch (IOException e) {
-                            reportError(Constants.ERROR_WRITE_FILE);
+                            reportError(DownloadError.ERROR_WRITE_FILE);
                             if (BuildConfig.DEBUG) {
                                 e.printStackTrace();
                             }
@@ -523,12 +553,12 @@ public class DownloadTask {
                     downloadBuffer.enqueueWriteSegment(segment);
                 }
             } catch (FileNotFoundException e) {
-                reportError(Constants.ERROR_WRITE_FILE);
+                reportError(DownloadError.ERROR_WRITE_FILE);
                 if (BuildConfig.DEBUG) {
                     e.printStackTrace();
                 }
             } catch (IOException e) {
-                reportError(Constants.ERROR_WRITE_FILE);
+                reportError(DownloadError.ERROR_WRITE_FILE);
                 if (BuildConfig.DEBUG) {
                     e.printStackTrace();
                 }
@@ -540,7 +570,7 @@ public class DownloadTask {
                     downloadListener.onDownloadFinished();
                 }
             } else {
-                reportError(Constants.ERROR_DOWNLOAD_FAIL);
+                reportError(DownloadError.ERROR_DOWNLOAD_FAIL);
             }
         }
     }

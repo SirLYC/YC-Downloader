@@ -43,7 +43,8 @@ public class DownloadInfo {
     private transient DownloadInfoDao myDao;
 
     @Generated(hash = 1345374087)
-    public DownloadInfo(Long id, @NotNull String url, @NotNull String path, DownloadItemState downloadItemState) {
+    public DownloadInfo(Long id, @NotNull String url, @NotNull String path,
+                        DownloadItemState downloadItemState) {
         this.id = id;
         this.url = url;
         this.path = path;
@@ -98,7 +99,8 @@ public class DownloadInfo {
                 throw new DaoException("Entity is detached from DAO context");
             }
             CustomerHeaderDao targetDao = daoSession.getCustomerHeaderDao();
-            List<CustomerHeader> customerHeadersNew = targetDao._queryDownloadInfo_CustomerHeaders(id);
+            List<CustomerHeader> customerHeadersNew = targetDao
+                    ._queryDownloadInfo_CustomerHeaders(id);
             synchronized (this) {
                 if (customerHeaders == null) {
                     customerHeaders = customerHeadersNew;
@@ -128,7 +130,8 @@ public class DownloadInfo {
                 throw new DaoException("Entity is detached from DAO context");
             }
             DownloadThreadInfoDao targetDao = daoSession.getDownloadThreadInfoDao();
-            List<DownloadThreadInfo> downloadThreadInfosNew = targetDao._queryDownloadInfo_DownloadThreadInfos(id);
+            List<DownloadThreadInfo> downloadThreadInfosNew = targetDao
+                    ._queryDownloadInfo_DownloadThreadInfos(id);
             synchronized (this) {
                 if (downloadThreadInfos == null) {
                     downloadThreadInfos = downloadThreadInfosNew;
@@ -182,7 +185,9 @@ public class DownloadInfo {
         myDao.update(this);
     }
 
-    /** called by internal mechanisms, do not call yourself. */
+    /**
+     * called by internal mechanisms, do not call yourself.
+     */
     @Generated(hash = 17038220)
     public void __setDaoSession(DaoSession daoSession) {
         this.daoSession = daoSession;

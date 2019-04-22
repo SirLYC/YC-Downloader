@@ -1,5 +1,6 @@
 package com.lyc.downloader;
 
+import android.content.Context;
 import okhttp3.OkHttpClient;
 
 /**
@@ -11,6 +12,15 @@ public class DownloadManager {
 
     // for http
     private OkHttpClient client;
+
+    private static Context appContext;
+
+    public static void init(Context context) {
+        if (context == null) {
+            throw new NullPointerException("Context cannot be null!");
+        }
+        appContext = context.getApplicationContext();
+    }
 
     private static final class Holder {
         private static final DownloadManager instance = new DownloadManager();

@@ -4,6 +4,8 @@ if (runAlone) {
     apply plugin: 'com.android.library'
 }
 
+apply plugin: 'org.greenrobot.greendao'
+
 
 android {
     compileSdkVersion buildInfo['compileSdkVersion']
@@ -47,6 +49,8 @@ dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation deps['core']
     implementation deps['okhttp']
+    implementation deps['greendao']
+
     testImplementation deps['junit']
     androidTestImplementation deps['test-core']
     androidTestImplementation deps['runner']

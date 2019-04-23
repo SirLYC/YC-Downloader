@@ -6,7 +6,11 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
-import android.widget.*;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+import android.widget.Toast;
 import androidx.annotation.Nullable;
 import com.lyc.downloader.utils.StringUtil;
 import okhttp3.HttpUrl;
@@ -32,12 +36,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private DownloadTask downloadTask;
     private DownloadListener downloadListener = new DownloadListener() {
         @Override
-        public void onPrepared() {
+        public void onPrepared(long id) {
             runOnUiThread(() -> stateTextView.setText(("ready")));
         }
 
         @Override
-        public void onProgressUpdate(long cur, long total) {
+        public void onProgressUpdate(long id, long total, long cur) {
             if (total == -1) {
                 progressBar.setProgress(0);
             } else {
@@ -46,7 +50,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         }
 
         @Override
-        public void onSpeedChange(double bps) {
+        public void onSpeedChange(long id, double bps) {
             runOnUiThread(() -> {
                 if (downloadTask.getState() == DownloadTask.RUNNING) {
                     stateTextView.setText(StringUtil.bpsToString(bps));
@@ -55,32 +59,32 @@ public class MainActivity extends Activity implements View.OnClickListener {
         }
 
         @Override
-        public void onDownloadError(String reason, boolean fatal) {
+        public void onDownloadError(long id, String reason, boolean fatal) {
             runOnUiThread(() -> stateTextView.setText(("error : " + reason + ", fatal : " + fatal)));
         }
 
         @Override
-        public void onDownloadStart() {
+        public void onDownloadStart(long id) {
             runOnUiThread(() -> stateTextView.setText(("starting")));
         }
 
         @Override
-        public void onDownloadPausing() {
+        public void onDownloadPausing(long id) {
             runOnUiThread(() -> stateTextView.setText(("pausing")));
         }
 
         @Override
-        public void onDownloadPaused() {
+        public void onDownloadPaused(long id) {
             runOnUiThread(() -> stateTextView.setText(("paused")));
         }
 
         @Override
-        public void onDownloadCancelling() {
+        public void onDownloadCancelling(long id) {
             runOnUiThread(() -> stateTextView.setText(("cancelling")));
         }
 
         @Override
-        public void onDownloadCanceled() {
+        public void onDownloadCanceled(long id) {
             runOnUiThread(() -> {
                 progressBar.setProgress(0);
                 stateTextView.setText(("canceled"));
@@ -88,7 +92,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         }
 
         @Override
-        public void onDownloadFinished() {
+        public void onDownloadFinished(long id) {
             runOnUiThread(() -> stateTextView.setText(("finished")));
         }
     };

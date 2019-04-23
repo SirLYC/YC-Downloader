@@ -6,24 +6,24 @@ package com.lyc.downloader;
  * @email kevinliu.sir@qq.com
  */
 public interface DownloadListener {
-    void onPrepared();
+    void onPrepared(long id);
 
     // cur, total: byte
-    void onProgressUpdate(long cur, long total);
+    void onProgressUpdate(long id, long total, long cur);
 
-    void onSpeedChange(double bps);
+    void onSpeedChange(long id, double bps);
 
-    void onDownloadError(String reason, boolean fatal);
+    void onDownloadError(long id, String reason, boolean fatal);
 
-    void onDownloadStart();
+    void onDownloadStart(long id);
 
-    void onDownloadPausing();
+    void onDownloadPausing(long id);
 
-    void onDownloadPaused();
+    void onDownloadPaused(long id);
 
-    void onDownloadCancelling();
+    void onDownloadCancelling(long id);
 
-    void onDownloadCanceled();
+    void onDownloadCanceled(long id);
 
-    void onDownloadFinished();
+    void onDownloadFinished(long id);
 }

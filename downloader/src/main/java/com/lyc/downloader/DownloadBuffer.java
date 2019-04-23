@@ -16,8 +16,9 @@ public class DownloadBuffer {
     private final long minInformInterval;
     public volatile long lastUpdateSpeedTime = -1;
     private volatile long downloadSize;
+    private final long id;
 
-    public DownloadBuffer(int threadCount, int bufferSize, DownloadListener listener, long minInforInterval) {
+    public DownloadBuffer(long id, int threadCount, int bufferSize, DownloadListener listener, long minInforInterval) {
         readBufferQueue = new ArrayBlockingQueue<>(threadCount);
         writeBufferQueue = new ArrayBlockingQueue<>(threadCount);
         for (int i = 0; i < threadCount; i++) {
@@ -25,6 +26,7 @@ public class DownloadBuffer {
         }
         downloadListener = listener;
         this.minInformInterval = minInforInterval;
+        this.id = id;
     }
 
     public Segment availableWriteSegment(long timeout) throws InterruptedException {
@@ -51,7 +53,7 @@ public class DownloadBuffer {
                 downloadSize += segment.readSize;
                 if (interval > minInformInterval) {
                     lastUpdateSpeedTime = cur;
-                    downloadListener.onSpeedChange(downloadSize / (interval / 1000000000.0));
+                    downloadListener.onSpeedChange(id, downloadSize / (interval / 1000000000.0));
                     downloadSize = 0;
                 }
             }

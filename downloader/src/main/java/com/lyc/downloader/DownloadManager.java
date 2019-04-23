@@ -3,31 +3,56 @@ package com.lyc.downloader;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
+import androidx.annotation.MainThread;
+import androidx.annotation.WorkerThread;
+import androidx.collection.LongSparseArray;
+import com.lyc.downloader.db.CustomerHeader;
+import com.lyc.downloader.db.CustomerHeaderDao;
 import com.lyc.downloader.db.DaoMaster;
 import com.lyc.downloader.db.DaoMaster.DevOpenHelper;
 import com.lyc.downloader.db.DaoSession;
+import com.lyc.downloader.db.DownloadInfo;
+import com.lyc.downloader.db.DownloadInfoDao;
+import com.lyc.downloader.db.DownloadItemState;
 import okhttp3.OkHttpClient;
+
+import java.io.File;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @author liuyuchuan
  * @date 2019/4/1
  * @email kevinliu.sir@qq.com
  */
-public class DownloadManager {
+public class DownloadManager implements DownloadListener {
 
     static final String DB_NAME = "yuchuan_downloader_db";
     @SuppressLint("StaticFieldLeak")
     private volatile static DownloadManager instance;
     // for http
-    final OkHttpClient client;
+    private final OkHttpClient client;
     final DaoSession daoSession;
     private final Context appContext;
+    private final LongSparseArray<DownloadTask> taskTable = new LongSparseArray<>();
+    private final LongSparseArray<DownloadInfo> infoTable = new LongSparseArray<>();
+    private final Deque<Long> runningTasksId = new ArrayDeque<>();
+    private final Deque<Long> waitingTasksId = new ArrayDeque<>();
+    private final Deque<Long> errorTasksId = new ArrayDeque<>();
+    private final Deque<Long> pausingTasksId = new ArrayDeque<>();
+    private final Deque<Long> finishedTasksId = new ArrayDeque<>();
+    private int maxRunnningTask = 4;
 
     public DownloadManager(OkHttpClient client, Context appContext) {
         this.client = client;
         this.appContext = appContext;
         SQLiteDatabase db = new DevOpenHelper(appContext, DB_NAME).getWritableDatabase();
         daoSession = new DaoMaster(db).newSession();
+        recoverDownloadTasks();
+        schedule();
     }
 
     public static void init(OkHttpClient client, Context context) {
@@ -58,5 +83,221 @@ public class DownloadManager {
             throw new IllegalStateException("init download manager by DownloadManager.init(Context context) first!");
         }
         return instance;
+    }
+
+    private void recoverDownloadTasks() {
+        DownloadExecutors.io.execute(() -> {
+            DownloadInfoDao downloadInfoDao = daoSession.getDownloadInfoDao();
+            List<DownloadInfo> downloadInfoList = downloadInfoDao.loadAll();
+            if (!downloadInfoList.isEmpty()) {
+                DownloadExecutors.androidMain.execute(() -> {
+                    for (DownloadInfo downloadInfo : downloadInfoList) {
+                        long id = downloadInfo.getId();
+                        taskTable.put(id, new DownloadTask(downloadInfo, client, this));
+                        infoTable.put(id, downloadInfo);
+                        switch (downloadInfo.getDownloadItemState()) {
+                            case DOWNLOADING:
+                                waitingTasksId.add(id);
+                            case FINISH:
+                                finishedTasksId.add(id);
+                                break;
+                            case PAUSE:
+                                pausingTasksId.add(id);
+                            case ERROR:
+                            case FATAL_ERROR:
+                                errorTasksId.add(id);
+                                break;
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    public int getMaxRunnningTask() {
+        return maxRunnningTask;
+    }
+
+    public void setMaxRunnningTask(int maxRunningTask) {
+        if (maxRunningTask < 0) return;
+        this.maxRunnningTask = maxRunningTask;
+    }
+
+    // first come first service
+    @MainThread
+    private void schedule() {
+        while (runningTasksId.size() < maxRunnningTask && !waitingTasksId.isEmpty()) {
+            Long id = waitingTasksId.pollFirst();
+            DownloadTask downloadTask = taskTable.get(id);
+            if (downloadTask == null) {
+                taskTable.remove(id);
+                continue;
+            }
+            downloadTask.start(false);
+            runningTasksId.offer(id);
+        }
+    }
+
+    @Override
+    public void onPrepared(long id) {
+
+    }
+
+    @Override
+    public void onProgressUpdate(long id, long total, long cur) {
+
+    }
+
+    @Override
+    public void onSpeedChange(long id, double bps) {
+
+    }
+
+    @Override
+    public void onDownloadError(long id, String reason, boolean fatal) {
+        DownloadExecutors.androidMain.execute(() -> {
+            DownloadTask downloadTask = taskTable.get(id);
+            if (downloadTask == null) return;
+            if (runningTasksId.remove(id) | pausingTasksId.remove(id) | waitingTasksId.remove(id)) {
+                errorTasksId.add(id);
+            }
+            schedule();
+        });
+    }
+
+    @Override
+    public void onDownloadStart(long id) {
+        // not use for now
+    }
+
+    @Override
+    public void onDownloadPausing(long id) {
+        onDownloadPaused(id);
+    }
+
+    @Override
+    public void onDownloadPaused(long id) {
+        DownloadExecutors.androidMain.execute(() -> {
+            DownloadTask downloadTask = taskTable.get(id);
+            if (downloadTask == null) return;
+            if (runningTasksId.remove(id)) {
+                pausingTasksId.add(id);
+            }
+            schedule();
+        });
+    }
+
+    @Override
+    public void onDownloadCancelling(long id) {
+        onDownloadCanceled(id);
+    }
+
+    @Override
+    public void onDownloadCanceled(long id) {
+        DownloadExecutors.androidMain.execute(() -> {
+            DownloadTask downloadTask = taskTable.get(id);
+            if (downloadTask == null) return;
+            if (runningTasksId.remove(id) | pausingTasksId.remove(id) |
+                    errorTasksId.remove(id) | finishedTasksId.remove(id) |
+                    waitingTasksId.remove(id)) {
+                taskTable.remove(id);
+            }
+            schedule();
+        });
+    }
+
+    @Override
+    public void onDownloadFinished(long id) {
+        DownloadExecutors.androidMain.execute(() -> {
+            DownloadTask downloadTask = taskTable.get(id);
+            if (downloadTask == null) return;
+            if (runningTasksId.remove(id)) {
+                finishedTasksId.add(id);
+            }
+            schedule();
+        });
+    }
+
+    @WorkerThread
+    private void submitInner(String url, String path, List<CustomerHeader> customerHeaders, SubmitListener listener, DownloadListener downloadListener) {
+        File file = new File(path);
+        if (file.exists()) {
+            listener.submitFail(new FileExitsException(file));
+            return;
+        }
+        DownloadInfo downloadInfo = new DownloadInfo(null, url, path, DownloadItemState.DOWNLOADING);
+        try {
+            Long insertId = daoSession.callInTx(() -> {
+                long id = daoSession.getDownloadInfoDao().insert(downloadInfo);
+                if (id != -1) {
+                    CustomerHeaderDao customerHeaderDao = daoSession.getCustomerHeaderDao();
+                    for (CustomerHeader customerHeader : customerHeaders) {
+                        customerHeader.setDownloadInfoId(id);
+                        customerHeaderDao.insert(customerHeader);
+                    }
+                }
+                return id;
+            });
+            if (insertId != null) {
+                listener.submitSuccess(insertId);
+                DownloadExecutors.androidMain.execute(() -> {
+                    infoTable.put(insertId, downloadInfo);
+                    taskTable.put(insertId, new DownloadTask(downloadInfo, client, downloadListener));
+                    waitingTasksId.add(insertId);
+                    schedule();
+                });
+            } else {
+                listener.submitFail(new Exception("创建任务失败"));
+            }
+        } catch (Exception e) {
+            listener.submitFail(e);
+        }
+    }
+
+    /************************** api **************************/
+    // include re-download
+    @MainThread
+    public void startOrResume(long id) {
+        DownloadTask downloadTask = taskTable.get(id);
+        if (downloadTask == null) {
+            return;
+        }
+        if (waitingTasksId.contains(id)) {
+            return;
+        }
+
+        if (pausingTasksId.remove(id) | errorTasksId.remove(id) | finishedTasksId.remove(id)) {
+            waitingTasksId.add(id);
+        }
+    }
+
+    @MainThread
+    public void pause(long id) {
+        DownloadTask downloadTask = taskTable.get(id);
+        if (downloadTask == null) return;
+        downloadTask.pause();
+    }
+
+    // also delete
+    @MainThread
+    public void cancel(long id) {
+        DownloadTask downloadTask = taskTable.get(id);
+        if (downloadTask == null) return;
+        downloadTask.cancel();
+    }
+
+    @MainThread
+    public void submit(String url, String path, Map<String, String> customerHeaders, SubmitListener listener, DownloadListener downloadListener) {
+        List<CustomerHeader> headers = new ArrayList<>();
+        for (String s : customerHeaders.keySet()) {
+            headers.add(new CustomerHeader(null, 0, s, customerHeaders.get(s)));
+        }
+        DownloadExecutors.io.execute(() -> submitInner(url, path, headers, listener, downloadListener));
+    }
+
+    public interface SubmitListener {
+        void submitSuccess(long id);
+
+        void submitFail(Exception e);
     }
 }

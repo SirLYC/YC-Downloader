@@ -103,6 +103,25 @@ public class DownloadTask {
         this.url = downloadInfo.getUrl();
         this.path = downloadInfo.getPath();
         this.client = client;
+        switch (downloadInfo.getDownloadItemState()) {
+            case ERROR:
+                resumable = true;
+                state.set(ERROR);
+                break;
+            case DELETE:
+                state.set(CANCELED);
+                break;
+            case FINISH:
+                state.set(FINISH);
+                break;
+            case FATAL_ERROR:
+                state.set(FATAL_ERROR);
+                break;
+            case PAUSE:
+                resumable = true;
+                state.set(PAUSING);
+                break;
+        }
         Map<String, String> headers = new HashMap<>();
         for (CustomerHeader customerHeader : downloadInfo.getCustomerHeaders()) {
             headers.put(customerHeader.getKey(), customerHeader.getValue());
@@ -202,11 +221,12 @@ public class DownloadTask {
         int s = state.get();
         if (restart) {
             if (s != RUNNING && s != PAUSING && s != CANCELLING && state.compareAndSet(s, PENDING)) {
+                stateChange();
                 DownloadExecutors.io.execute(this::execute);
                 return true;
             }
         } else {
-            if (s != RUNNING && s != PAUSING && s != CANCELLING) {
+            if (s != RUNNING && s != PAUSING && s != CANCELLING && s != FINISH) {
                 DownloadExecutors.io.execute(this::execute);
                 return true;
             }
@@ -222,9 +242,10 @@ public class DownloadTask {
         }
         int s = state.get();
         // 如果是从暂停或者错误中恢复，不需要再重试
-        boolean resuming = (s == PAUSED || s == ERROR) && resumable;
+        boolean resuming = (s == PAUSED || s == ERROR) && resumable && downloadThreadInfos != null;
         if (!resuming && s != PREPARING) {
             state.compareAndSet(s, PREPARING);
+            stateChange();
             if (!prepare())
                 return;
 
@@ -238,7 +259,9 @@ public class DownloadTask {
         if (s == RUNNING) {
             throw new IllegalStateException("current state is running");
         }
-        if (!state.compareAndSet(s, RUNNING)) {
+        if (state.compareAndSet(s, RUNNING)) {
+            stateChange();
+        } else {
             throw new IllegalStateException("current state(try to connect) : " + state.get());
         }
 
@@ -250,6 +273,48 @@ public class DownloadTask {
 
         // reuse this thread
         writeToDiskRunnable.run();
+    }
+
+    @WorkerThread
+    private void stateChange() {
+        int newState = state.get();
+        DownloadItemState targetState = null;
+        switch (newState) {
+            case PENDING:
+            case PREPARING:
+            case RUNNING:
+                targetState = DownloadItemState.DOWNLOADING;
+                break;
+            case PAUSING:
+            case PAUSED:
+            case WAITING:
+                targetState = DownloadItemState.PAUSE;
+                break;
+            case FINISH:
+                targetState = DownloadItemState.FINISH;
+                break;
+            case CANCELLING:
+            case CANCELED:
+                targetState = DownloadItemState.DELETE;
+                break;
+            case ERROR:
+                targetState = DownloadItemState.ERROR;
+                break;
+            case FATAL_ERROR:
+                targetState = DownloadItemState.FATAL_ERROR;
+                break;
+        }
+
+        if (targetState != null && downloadInfo != null && downloadInfo.getDownloadItemState() != targetState) {
+            downloadInfo.setDownloadItemState(targetState);
+            try {
+                DownloadManager.instance().daoSession.getDownloadInfoDao().save(downloadInfo);
+            } catch (Exception e) {
+                if (BuildConfig.DEBUG) {
+                    e.printStackTrace();
+                }
+            }
+        }
     }
 
     private boolean initDownloadInfo() {
@@ -411,6 +476,7 @@ public class DownloadTask {
 
     public void pause() {
         if (state.compareAndSet(RUNNING, PAUSING) || state.compareAndSet(PREPARING, PAUSING)) {
+            stateChange();
             if (downloadRunnables != null) {
                 for (DownloadRunnable downloadRunnable : downloadRunnables) {
                     downloadRunnable.cancelRequest();
@@ -423,10 +489,12 @@ public class DownloadTask {
     public void cancel() {
         int s = state.get();
         if (s == PAUSED && state.compareAndSet(PAUSED, CANCELED)) {
+            stateChange();
             downloadListener.onDownloadCanceled();
         }
         if (s != CANCELLING && s != PREPARING && s != PAUSING && s != FINISH && s != CANCELED) {
             state.compareAndSet(s, CANCELLING);
+            stateChange();
             if (downloadRunnables != null) {
                 for (DownloadRunnable downloadRunnable : downloadRunnables) {
                     downloadRunnable.cancelRequest();
@@ -452,8 +520,10 @@ public class DownloadTask {
 
         boolean fatal = downloadError.isFatal(code);
         if (!fatal && state.compareAndSet(s, ERROR)) {
+            stateChange();
             downloadListener.onDownloadError(downloadError.translate(code), false);
         } else if (fatal && state.compareAndSet(s, FATAL_ERROR)) {
+            stateChange();
             downloadListener.onDownloadError(downloadError.translate(code), true);
         }
     }
@@ -490,7 +560,7 @@ public class DownloadTask {
         return downloadSize.get();
     }
 
-    @IntDef({PENDING, PREPARING, RUNNING, PAUSING, PAUSED, FINISH, WAITING, CANCELLING, CANCELED, ERROR})
+    @IntDef({PENDING, PREPARING, RUNNING, PAUSING, PAUSED, FINISH, WAITING, CANCELLING, CANCELED, ERROR, FATAL_ERROR})
     @Retention(RetentionPolicy.SOURCE)
     @interface DownloadState {
     }
@@ -646,11 +716,13 @@ public class DownloadTask {
 
                     if (s == PAUSING) {
                         if (state.compareAndSet(PAUSING, PAUSED)) {
+                            stateChange();
                             downloadListener.onDownloadPaused();
                         }
                         return;
                     } else if (s == CANCELLING) {
                         if (state.compareAndSet(CANCELLING, CANCELED)) {
+                            stateChange();
                             downloadListener.onDownloadCanceled();
                         }
                         return;
@@ -701,6 +773,13 @@ public class DownloadTask {
                         DownloadThreadInfo downloadThreadInfo = downloadThreadInfos[tid];
                         long newSize = downloadThreadInfo.getDownloadedSize() + downloaded;
                         downloadThreadInfo.setDownloadedSize(newSize);
+                        try {
+                            DownloadManager.instance().daoSession.getDownloadThreadInfoDao().save(downloadThreadInfo);
+                        } catch (Exception e) {
+                            if (BuildConfig.DEBUG) {
+                                e.printStackTrace();
+                            }
+                        }
                     }
                 }
             } catch (FileNotFoundException e) {
@@ -718,6 +797,7 @@ public class DownloadTask {
             int s = state.get();
             if (s == RUNNING && downloadFile.renameTo(new File(path))) {
                 if (state.compareAndSet(s, FINISH)) {
+                    stateChange();
                     downloadListener.onDownloadFinished();
                 }
             } else {

@@ -3,15 +3,35 @@ package com.lyc.downloader;
 import android.util.Log;
 import androidx.annotation.IntDef;
 import androidx.annotation.WorkerThread;
-import okhttp3.*;
+import com.lyc.downloader.db.CustomerHeader;
+import com.lyc.downloader.db.CustomerHeaderDao;
+import com.lyc.downloader.db.DaoSession;
+import com.lyc.downloader.db.DownloadInfo;
+import com.lyc.downloader.db.DownloadInfoDao;
+import com.lyc.downloader.db.DownloadItemState;
+import com.lyc.downloader.db.DownloadThreadInfo;
+import okhttp3.Call;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * @author liuyuchuan
@@ -35,7 +55,7 @@ public class DownloadTask {
     public static final int FATAL_ERROR = 10;
 
     // in bytes
-    private static final int MAX_BUFFER = 1 << 20;
+    private static final int MAX_BUFFER = 1 << 16;
     private static final int MIN_BUFFER = 4 * (2 << 10);
 
     private static final int MAX_DOWNLOAD_THREAD = 4;
@@ -52,24 +72,47 @@ public class DownloadTask {
     private OkHttpClient client;
     private Request pivotRequest;
     private DownloadBuffer downloadBuffer;
-    private long[] startPos;
     private long totalLen;
-    private boolean downloadPosPresent = false;
     private boolean resumable = false;
     private WriteToDiskRunnable writeToDiskRunnable;
     private DownloadRunnable[] downloadRunnables;
+    private final DownloadInfo downloadInfo;
     private final DownloadListener downloadListener;
-    private volatile long downloadSize = 0;
+    private DownloadThreadInfo[] downloadThreadInfos;
     private Call pivotCall;
     private long bufferTimeout = 1;
+    private AtomicLong downloadSize = new AtomicLong(0);
 
-    protected DownloadTask(String url, String path, Map<String, String> customerHeaders, OkHttpClient client, DownloadListener downloadListener) {
+    DownloadTask(String url, String path, Map<String, String> customerHeaders, OkHttpClient client, DownloadListener downloadListener) {
         this.url = url;
         this.path = path;
         this.client = client;
         this.customerHeaders = customerHeaders;
-        downloadFile = new File(path + Constants.TMP_FILE_SUFFIX);
         this.downloadListener = downloadListener;
+        this.downloadInfo = new DownloadInfo(null, url, path, DownloadItemState.DOWNLOADING);
+        setup();
+    }
+
+    /**
+     * only used by {@link DownloadManager} to recover from database when start
+     */
+    @WorkerThread
+    DownloadTask(DownloadInfo downloadInfo, OkHttpClient client, DownloadListener downloadListener) {
+        this.downloadInfo = downloadInfo;
+        this.downloadListener = downloadListener;
+        this.url = downloadInfo.getUrl();
+        this.path = downloadInfo.getPath();
+        this.client = client;
+        Map<String, String> headers = new HashMap<>();
+        for (CustomerHeader customerHeader : downloadInfo.getCustomerHeaders()) {
+            headers.put(customerHeader.getKey(), customerHeader.getValue());
+        }
+        this.customerHeaders = headers;
+        setup();
+    }
+
+    private void setup() {
+        downloadFile = new File(path + Constants.TMP_FILE_SUFFIX);
         int index = path.lastIndexOf('/');
         if (index == -1) {
             throw new IllegalArgumentException("path should be absolute path");
@@ -99,6 +142,14 @@ public class DownloadTask {
             reportError(DownloadError.ERROR_CREATE_DIR);
             return false;
         }
+
+        if (downloadInfo.getId() == null) {
+            if (!persistDownloadInfo()) {
+                reportError(DownloadError.ERROR_CREATE_TASK);
+                return false;
+            }
+        }
+
         RequestBuilder = new Request.Builder();
         if (customerHeaders != null && !customerHeaders.isEmpty()) {
             Set<String> keys = customerHeaders.keySet();
@@ -115,9 +166,35 @@ public class DownloadTask {
                 .url(url)
                 .addHeader("If-Range", "bytes=0-")
                 .build();
-        downloadPosPresent = false;
         totalLen = -1;
         return true;
+    }
+
+    private boolean persistDownloadInfo() {
+        DaoSession daoSession = DownloadManager.instance().daoSession;
+        try {
+            daoSession.runInTx(() -> {
+                DownloadInfoDao downloadInfoDao = daoSession.getDownloadInfoDao();
+                CustomerHeaderDao customerHeaderDao = daoSession.getCustomerHeaderDao();
+                long id = downloadInfoDao.insert(downloadInfo);
+                if (id != -1) {
+                    for (String key : customerHeaders.keySet()) {
+                        String value = customerHeaders.get(key);
+                        if (value != null) {
+                            customerHeaderDao.insert(new CustomerHeader(null, id, key, value));
+                        }
+                    }
+                }
+            });
+        } catch (Exception e) {
+            if (BuildConfig.DEBUG) {
+                e.printStackTrace();
+            }
+            return false;
+        }
+        Long id = downloadInfo.getId();
+
+        return id != null && id != -1;
     }
 
     // resume or start
@@ -139,7 +216,7 @@ public class DownloadTask {
     }
 
     @WorkerThread
-    public void execute() {
+    void execute() {
         if (BuildConfig.DEBUG) {
             Log.d(Constants.DEBUG_TAG, "execute: " + url);
         }
@@ -171,114 +248,165 @@ public class DownloadTask {
             DownloadExecutors.io.execute(downloadRunnable);
         }
 
-        if (resuming) {
-            downloadListener.onProgressUpdate(writeToDiskRunnable.downloadedSize, totalLen);
-        } else {
-            downloadListener.onDownloadStart();
-        }
+        // reuse this thread
         writeToDiskRunnable.run();
     }
 
     private boolean initDownloadInfo() {
-        // fetch last download info if possible
-        Response response;
+        // try to recover from last download
+        long totalLen = -1;
+        int bufferSize = MAX_BUFFER;
         try {
-            pivotCall = client.newCall(pivotRequest);
-            response = pivotCall.execute();
-        } catch (IOException e) {
+            List<DownloadThreadInfo> downloadThreadInfoList = downloadInfo.getDownloadThreadInfos();
+            if (!downloadThreadInfoList.isEmpty()) {
+                downloadThreadInfos = new DownloadThreadInfo[downloadThreadInfoList.size()];
+                downloadThreadInfoList.toArray(downloadThreadInfos);
+                Arrays.sort(downloadThreadInfos);
+                long tmp = 0;
+                for (DownloadThreadInfo downloadThreadInfo : downloadThreadInfos) {
+                    if (downloadThreadInfo.getTotalSize() != -1) {
+                        tmp += downloadThreadInfo.getTotalSize();
+                        downloadSize.addAndGet(downloadThreadInfo.getDownloadedSize());
+                    } else {
+                        downloadSize.set(0);
+                        tmp = -1;
+                        if (downloadThreadInfos.length != 1) {
+                            DownloadManager.instance().daoSession.getDownloadThreadInfoDao().deleteInTx(downloadThreadInfos);
+                            downloadThreadInfos = null;
+                            downloadInfo.resetDownloadThreadInfos();
+                        }
+                        break;
+                    }
+                }
+
+                if (downloadThreadInfos != null) {
+                    totalLen = tmp;
+                    bufferSize = chooseBufferSize(totalLen);
+                    downloadThreadCount = downloadThreadInfos.length;
+                }
+            }
+        } catch (Exception e) {
             if (BuildConfig.DEBUG) {
                 e.printStackTrace();
             }
-            if (pivotCall != null) {
-                pivotCall.cancel();
-                pivotCall = null;
+            if (downloadThreadInfos != null) {
+                DownloadManager.instance().daoSession.getDownloadThreadInfoDao().deleteInTx(downloadThreadInfos);
+                downloadThreadInfos = null;
+                downloadInfo.resetDownloadThreadInfos();
             }
-            reportError(DownloadError.ERROR_NETWORK);
-            return false;
+            downloadSize.set(0);
         }
 
-        pivotCall = null;
-        resumable = response.code() == 206;
-        long bufferSize;
-        if (resumable) {
-            ResponseBody body = response.body();
-            if (body == null) {
-                throw new NullPointerException("nothing available for download");
+        if (downloadThreadInfos == null) {
+            // fetch last download info if possible
+            Response response;
+            try {
+                pivotCall = client.newCall(pivotRequest);
+                response = pivotCall.execute();
+            } catch (IOException e) {
+                if (BuildConfig.DEBUG) {
+                    e.printStackTrace();
+                }
+                if (pivotCall != null) {
+                    pivotCall.cancel();
+                    pivotCall = null;
+                }
+                reportError(DownloadError.ERROR_NETWORK);
+                return false;
             }
-            // multi thread with resuming
-            totalLen = body.contentLength();
-            if (totalLen == -1) {
-                String contentRange = response.header("Content-Rang");
-                if (contentRange != null) {
-                    int index = contentRange.lastIndexOf('/');
-                    if (index != -1) {
-                        String len = contentRange.substring(index);
-                        try {
-                            totalLen = Long.parseLong(len);
-                        } catch (NumberFormatException e) {
-                            totalLen = -1;
+
+            pivotCall = null;
+            resumable = response.code() == 206;
+            if (resumable) {
+                ResponseBody body = response.body();
+                if (body == null) {
+                    throw new NullPointerException("nothing available for download");
+                }
+                // multi thread with resuming
+                totalLen = body.contentLength();
+                if (totalLen == -1) {
+                    String contentRange = response.header("Content-Rang");
+                    if (contentRange != null) {
+                        int index = contentRange.lastIndexOf('/');
+                        if (index != -1) {
+                            String len = contentRange.substring(index);
+                            try {
+                                totalLen = Long.parseLong(len);
+                            } catch (NumberFormatException e) {
+                                totalLen = -1;
+                            }
                         }
                     }
                 }
-            }
 
-            // 选择bufferSize
-            // 尽可能让进度条能多动，但下载缓冲区不至于太小或太大
-            bufferSize = totalLen / 100L;
-            if (bufferSize < MIN_BUFFER) {
-                bufferSize = MIN_BUFFER;
-            } else if (bufferSize > MAX_BUFFER) {
-                bufferSize = MAX_BUFFER;
-            }
+                bufferSize = chooseBufferSize(totalLen);
 
-            // 选择合适的线程数，每个线程能多做事
-            // 如果每个线程做的事太少了，减少线程数
-            int threadCnt;
-            for (threadCnt = MAX_DOWNLOAD_THREAD; threadCnt >= 1; threadCnt--) {
-                int readCnt = 100 / threadCnt;
-                if (readCnt * bufferSize < totalLen) {
-                    break;
+                // 选择合适的线程数，每个线程能多做事
+                // 如果每个线程做的事太少了，减少线程数
+                int threadCnt;
+                for (threadCnt = MAX_DOWNLOAD_THREAD; threadCnt >= 1; threadCnt--) {
+                    int readCnt = 100 / threadCnt;
+                    if (readCnt * bufferSize < totalLen) {
+                        break;
+                    }
                 }
+                downloadThreadCount = threadCnt;
+            } else if (response.isSuccessful()) {
+                // single thread without resuming
+                downloadThreadCount = 1;
+            } else {
+                reportError(DownloadError.ERROR_NETWORK);
+                return false;
             }
-            downloadThreadCount = threadCnt;
-        } else if (response.isSuccessful()) {
-            // single thread with out resuming
-            downloadThreadCount = 1;
-            bufferSize = MAX_BUFFER;
-        } else {
-            reportError(DownloadError.ERROR_NETWORK);
-            return false;
-        }
 
-        if (!downloadPosPresent) {
-            downloadSize = 0;
-            startPos = new long[downloadThreadCount];
+            downloadSize.set(0);
+            downloadThreadInfos = new DownloadThreadInfo[downloadThreadCount];
             if (totalLen == -1) {
                 // cannot resume
                 // downloadTreadCount == 1
-                startPos[0] = 0L;
+                downloadThreadInfos[0] = new DownloadThreadInfo(
+                        null, 0, 0,
+                        0, -1, downloadInfo.getId()
+                );
             } else {
                 long downloadLen = totalLen / downloadThreadCount;
+                long lenSum = 0, last;
                 for (int i = 0; i < downloadThreadCount; i++) {
-                    startPos[i] = i * downloadLen;
+                    last = lenSum;
+                    lenSum += Math.min(totalLen, lenSum + downloadLen);
+                    downloadThreadInfos[i] = new DownloadThreadInfo(
+                            null, i, i * downloadLen,
+                            0, lenSum - last, downloadInfo.getId()
+                    );
                 }
             }
         }
 
-        downloadBuffer = new DownloadBuffer(downloadThreadCount, (int) bufferSize, downloadListener, 1000000000L);
-        writeToDiskRunnable = new WriteToDiskRunnable(downloadSize);
+        this.totalLen = totalLen;
+        downloadBuffer = new DownloadBuffer(downloadThreadCount, bufferSize, downloadListener, 1000000000L);
+        writeToDiskRunnable = new WriteToDiskRunnable();
         downloadRunnables = new DownloadRunnable[downloadThreadCount];
-        for (int i = 0; i < downloadRunnables.length; i++) {
-            long contentLen;
-            if (i + 1 < downloadRunnables.length) {
-                contentLen = startPos[i + 1] - startPos[i];
-            } else {
-                contentLen = totalLen == -1 ? -1 : totalLen - startPos[i];
-            }
-            downloadRunnables[i] = new DownloadRunnable(startPos[i], contentLen, i);
+        for (int i = 0; i < downloadThreadInfos.length; i++) {
+            downloadRunnables[i] = new DownloadRunnable(downloadThreadInfos[i].getStartPosition(),
+                    downloadThreadInfos[i].getTotalSize(),
+                    downloadThreadInfos[i].getTid());
         }
 
         return true;
+    }
+
+    private int chooseBufferSize(long totalLen) {
+        if (totalLen == -1) {
+            return MAX_BUFFER;
+        }
+
+        // 选择bufferSize
+        // 尽可能让进度条能多动，但下载缓冲区不至于太小或太大
+        long bufferSize = totalLen / 100L;
+        if (bufferSize < MIN_BUFFER) bufferSize = MIN_BUFFER;
+        else bufferSize = MAX_BUFFER;
+
+        return (int) bufferSize;
     }
 
     public void pause() {
@@ -310,7 +438,15 @@ public class DownloadTask {
 
     private void reportError(int code) {
         int s = state.get();
-        if (s == ERROR || s == FATAL_ERROR) {
+        if (s == ERROR) {
+            return;
+        }
+
+        if (s == FATAL_ERROR) {
+            DownloadManager.instance().daoSession
+                    .getDownloadThreadInfoDao().deleteInTx(downloadInfo.getDownloadThreadInfos());
+            downloadInfo.getDownloadThreadInfos().clear();
+            downloadThreadInfos = null;
             return;
         }
 
@@ -351,11 +487,7 @@ public class DownloadTask {
     }
 
     public long downloadedSize() {
-        if (writeToDiskRunnable != null) {
-            return writeToDiskRunnable.downloadedSize;
-        }
-
-        return 0;
+        return downloadSize.get();
     }
 
     @IntDef({PENDING, PREPARING, RUNNING, PAUSING, PAUSED, FINISH, WAITING, CANCELLING, CANCELED, ERROR})
@@ -369,6 +501,9 @@ public class DownloadTask {
         private long currentPos;
         private Call call;
         private final int retryCount = 2;
+        /**
+         * @see DownloadThreadInfo#tid
+         */
         private final int id;
 
         DownloadRunnable(long startPos, long contentLen, int id) {
@@ -386,53 +521,58 @@ public class DownloadTask {
 
         @Override
         public void run() {
-            Request request;
-            if (contentLen > 0 && resumable) {
-                request = RequestBuilder.addHeader("Range", "bytes=" + currentPos + "-" + (startPos + contentLen - 1)).build();
-            } else if (resumable) {
-                request = RequestBuilder.addHeader("Range", "bytes=" + currentPos + "-").build();
-            } else {
-                currentPos = 0;
-                request = RequestBuilder.build();
-            }
+            InputStream is = null;
 
-            boolean success = false;
-            int retryCount = this.retryCount;
-            ResponseBody body = null;
-            do {
-                int s = state.get();
-                if (s != RUNNING) {
-                    return;
+            if (currentPos < startPos + contentLen) {
+                Request request;
+                if (contentLen > 0 && resumable) {
+                    request = RequestBuilder.addHeader("Range", "bytes=" + currentPos + "-" + (startPos + contentLen - 1)).build();
+                } else if (resumable) {
+                    request = RequestBuilder.addHeader("Range", "bytes=" + currentPos + "-").build();
+                } else {
+                    currentPos = 0;
+                    request = RequestBuilder.build();
                 }
-                try {
-                    call = client.newCall(request);
-                    Response response = call.execute();
-                    if (!response.isSuccessful() || ((body = response.body()) == null))
-                        continue;
-                    retryCount = 0;
-                    success = true;
-                } catch (IOException e) {
-                    if (BuildConfig.DEBUG) {
-                        e.printStackTrace();
-                    }
-                    s = state.get();
+
+                boolean success = false;
+                int retryCount = this.retryCount;
+                ResponseBody body = null;
+                do {
+                    int s = state.get();
                     if (s != RUNNING) {
                         return;
                     }
-                }
-            } while (retryCount-- > 0);
+                    try {
+                        call = client.newCall(request);
+                        Response response = call.execute();
+                        if (!response.isSuccessful() || ((body = response.body()) == null))
+                            continue;
+                        retryCount = 0;
+                        success = true;
+                    } catch (IOException e) {
+                        if (BuildConfig.DEBUG) {
+                            e.printStackTrace();
+                        }
+                        s = state.get();
+                        if (s != RUNNING) {
+                            return;
+                        }
+                    }
+                } while (retryCount-- > 0);
 
-            if (!success) {
-                if (BuildConfig.DEBUG) {
-                    Log.d(Constants.DEBUG_TAG, "connect fail " + "id : " + id + " retry count " + retryCount);
+                if (!success) {
+                    if (BuildConfig.DEBUG) {
+                        Log.d(Constants.DEBUG_TAG, "connect fail " + "id : " + id + " retry count " + retryCount);
+                    }
+                    reportError(DownloadError.ERROR_NETWORK);
+                    return;
                 }
-                reportError(DownloadError.ERROR_NETWORK);
-                return;
+
+
+                is = Objects.requireNonNull(body).byteStream();
             }
 
-
-            InputStream is = Objects.requireNonNull(body).byteStream();
-
+            int retryCount = this.retryCount;
             Segment segment;
             for (; ; ) {
                 int s = state.get();
@@ -454,15 +594,21 @@ public class DownloadTask {
                 }
 
                 try {
-                    segment.readSize = is.read(segment.buffer);
+                    if (is != null) {
+                        segment.readSize = is.read(segment.buffer);
+                    } else {
+                        // finished
+                        segment.readSize = -1;
+                    }
                     segment.startPos = currentPos;
+                    segment.tid = this.id;
                     if (segment.readSize > 0) {
                         currentPos += segment.readSize;
                     }
                     downloadBuffer.enqueueReadSegment(segment);
                 } catch (IOException e) {
                     s = state.get();
-                    if (s != PAUSING && s != PAUSED && s != CANCELED && s != CANCELLING) {
+                    if (s != PAUSING && s != PAUSED && s != CANCELED && s != CANCELLING && retryCount-- <= 0) {
                         reportError(DownloadError.ERROR_DOWNLOAD_FAIL);
                         if (BuildConfig.DEBUG) {
                             e.printStackTrace();
@@ -480,15 +626,11 @@ public class DownloadTask {
     }
 
     class WriteToDiskRunnable implements Runnable {
-        private int finishCount;
-        private long downloadedSize;
-
-        WriteToDiskRunnable(long downloadedSize) {
-            this.downloadedSize = downloadedSize;
-        }
+        private final Set<Integer> finishThreads = new HashSet<>();
 
         @Override
         public void run() {
+            downloadListener.onProgressUpdate(downloadSize.get(), totalLen);
             if (!preAllocation()) {
                 if (BuildConfig.DEBUG) {
                     Log.e(Constants.DEBUG_TAG, "preAllocation failed");
@@ -498,7 +640,7 @@ public class DownloadTask {
             }
 
             try (RandomAccessFile raf = new RandomAccessFile(downloadFile, "rw")) {
-                while (finishCount < downloadThreadCount) {
+                while (finishThreads.size() < downloadThreadCount) {
                     Segment segment;
                     int s = state.get();
 
@@ -532,14 +674,18 @@ public class DownloadTask {
                         continue;
                     }
 
+                    int tid = -1;
+                    long downloaded = -1;
                     if (segment.readSize <= 0) {
-                        finishCount++;
+                        finishThreads.add(segment.tid);
                     } else {
                         try {
                             raf.seek(segment.startPos);
                             raf.write(segment.buffer, 0, segment.readSize);
-                            downloadedSize += segment.readSize;
-                            downloadListener.onProgressUpdate(downloadedSize, totalLen);
+                            tid = segment.tid;
+                            downloaded = segment.readSize;
+                            downloadSize.addAndGet(segment.readSize);
+                            downloadListener.onProgressUpdate(downloadSize.get(), totalLen);
                         } catch (IOException e) {
                             reportError(DownloadError.ERROR_WRITE_FILE);
                             if (BuildConfig.DEBUG) {
@@ -551,6 +697,11 @@ public class DownloadTask {
                     }
                     // TODO: 2019/4/7 update database here
                     downloadBuffer.enqueueWriteSegment(segment);
+                    if (tid != -1 && downloaded != -1) {
+                        DownloadThreadInfo downloadThreadInfo = downloadThreadInfos[tid];
+                        long newSize = downloadThreadInfo.getDownloadedSize() + downloaded;
+                        downloadThreadInfo.setDownloadedSize(newSize);
+                    }
                 }
             } catch (FileNotFoundException e) {
                 reportError(DownloadError.ERROR_WRITE_FILE);

@@ -30,7 +30,7 @@ public class DBTest {
     @Before
     public void init() {
         Context context = ApplicationProvider.getApplicationContext();
-        SQLiteDatabase db = new DevOpenHelper(context, "yuchuan_downloader" + TEST_SUFFIX + ".db").getWritableDatabase();
+        SQLiteDatabase db = new DevOpenHelper(context, DownloadManager.DB_NAME + TEST_SUFFIX + ".db").getWritableDatabase();
         daoMaster = new DaoMaster(db);
         daoSession = daoMaster.newSession();
         clear();

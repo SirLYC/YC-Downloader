@@ -9,6 +9,7 @@ public class Segment {
     public final byte[] buffer;
     public int readSize;
     public long startPos;
+    public int tid;
 
     public Segment(int bufferSize) {
         if (bufferSize <= 0) {

@@ -21,6 +21,7 @@ public class DownloadError {
      */
     public static final int ERROR_SPACE_FULL = 100;
     public static final int ERROR_CREATE_DIR = 101;
+    public static final int ERROR_CREATE_TASK = 102;
     private static final DownloadError instance = new DownloadError();
     private Translator translator = new DefaultTranslator();
 
@@ -72,6 +73,8 @@ public class DownloadError {
                     return "空间不足";
                 case ERROR_CREATE_DIR:
                     return "创建文件夹失败";
+                case ERROR_CREATE_TASK:
+                    return "创建任务失败";
                 default:
                     return "未知错误";
             }

@@ -1,7 +1,7 @@
 package com.lyc.downloader.db;
 
+import com.lyc.downloader.DownloadTask.DownloadState;
 import org.greenrobot.greendao.DaoException;
-import org.greenrobot.greendao.annotation.Convert;
 import org.greenrobot.greendao.annotation.Entity;
 import org.greenrobot.greendao.annotation.Generated;
 import org.greenrobot.greendao.annotation.Id;
@@ -27,8 +27,8 @@ public class DownloadInfo {
     private String path;
     @ToMany(referencedJoinProperty = "downloadInfoId")
     private List<CustomerHeader> customerHeaders;
-    @Convert(columnType = Integer.class, converter = DownloadItemStateConverter.class)
-    private DownloadItemState downloadItemState;
+    @DownloadState
+    private int downloadItemState;
     @ToMany(referencedJoinProperty = "downloadInfoId")
     private List<DownloadThreadInfo> downloadThreadInfos;
     /**
@@ -42,9 +42,9 @@ public class DownloadInfo {
     @Generated(hash = 1465593784)
     private transient DownloadInfoDao myDao;
 
-    @Generated(hash = 1345374087)
+    @Generated(hash = 121570573)
     public DownloadInfo(Long id, @NotNull String url, @NotNull String path,
-                        DownloadItemState downloadItemState) {
+                        int downloadItemState) {
         this.id = id;
         this.url = url;
         this.path = path;
@@ -79,11 +79,11 @@ public class DownloadInfo {
         this.path = path;
     }
 
-    public DownloadItemState getDownloadItemState() {
+    public int getDownloadItemState() {
         return this.downloadItemState;
     }
 
-    public void setDownloadItemState(DownloadItemState downloadItemState) {
+    public void setDownloadItemState(int downloadItemState) {
         this.downloadItemState = downloadItemState;
     }
 

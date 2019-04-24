@@ -13,7 +13,6 @@ import com.lyc.downloader.db.DaoMaster.DevOpenHelper;
 import com.lyc.downloader.db.DaoSession;
 import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.db.DownloadInfoDao;
-import com.lyc.downloader.db.DownloadItemState;
 import okhttp3.OkHttpClient;
 
 import java.io.File;
@@ -25,6 +24,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import static com.lyc.downloader.DownloadTask.*;
 
 /**
  * @author liuyuchuan
@@ -97,24 +98,49 @@ public class DownloadManager implements DownloadListener {
             List<DownloadInfo> downloadInfoList = downloadInfoDao.loadAll();
             if (!downloadInfoList.isEmpty()) {
                 DownloadExecutors.androidMain.execute(() -> {
+                    // make sure to add last
+                    List<Long> waitingList = new ArrayList<>();
                     for (DownloadInfo downloadInfo : downloadInfoList) {
                         long id = downloadInfo.getId();
                         taskTable.put(id, new DownloadTask(downloadInfo, client, this));
                         infoTable.put(id, downloadInfo);
                         switch (downloadInfo.getDownloadItemState()) {
-                            case DOWNLOADING:
+                            case PENDING:
+                            case PREPARING:
+                            case RUNNING:
+                                downloadInfo.setDownloadItemState(PENDING);
                                 waitingTasksId.add(id);
+                                break;
+                            case PAUSING:
+                            case PAUSED:
+                                downloadInfo.setDownloadItemState(PAUSED);
+                                pausingTasksId.add(id);
+                                break;
                             case FINISH:
+                                downloadInfo.setDownloadItemState(FINISH);
                                 finishedTasksId.add(id);
                                 break;
-                            case PAUSE:
-                                pausingTasksId.add(id);
+                            case WAITING:
+                                downloadInfo.setDownloadItemState(WAITING);
+                                waitingList.add(id);
+                                break;
+                            case CANCELLING:
+                            case CANCELED:
+                                downloadInfo.setDownloadItemState(CANCELED);
+                                taskTable.remove(id);
+                                infoTable.remove(id);
+                                break;
                             case ERROR:
+                                downloadInfo.setDownloadItemState(ERROR);
+                                errorTasksId.add(id);
+                                break;
                             case FATAL_ERROR:
+                                downloadInfo.setDownloadItemState(FATAL_ERROR);
                                 errorTasksId.add(id);
                                 break;
                         }
                     }
+                    waitingTasksId.addAll(waitingList);
                     schedule();
                 });
             }
@@ -283,7 +309,7 @@ public class DownloadManager implements DownloadListener {
             listener.submitFail(new FileExitsException(file));
             return;
         }
-        DownloadInfo downloadInfo = new DownloadInfo(null, url, path, DownloadItemState.DOWNLOADING);
+        DownloadInfo downloadInfo = new DownloadInfo(null, url, path, PENDING);
         try {
             Long insertId = daoSession.callInTx(() -> {
                 long id = daoSession.getDownloadInfoDao().insert(downloadInfo);

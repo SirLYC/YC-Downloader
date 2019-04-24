@@ -4,8 +4,15 @@ import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.runner.AndroidJUnit4;
-import com.lyc.downloader.db.*;
+import com.lyc.downloader.db.CustomerHeader;
+import com.lyc.downloader.db.CustomerHeaderDao;
+import com.lyc.downloader.db.DaoMaster;
 import com.lyc.downloader.db.DaoMaster.DevOpenHelper;
+import com.lyc.downloader.db.DaoSession;
+import com.lyc.downloader.db.DownloadInfo;
+import com.lyc.downloader.db.DownloadInfoDao;
+import com.lyc.downloader.db.DownloadThreadInfo;
+import com.lyc.downloader.db.DownloadThreadInfoDao;
 import org.greenrobot.greendao.AbstractDao;
 import org.junit.After;
 import org.junit.Assert;
@@ -49,7 +56,7 @@ public class DBTest {
     public void testDB() {
         DownloadInfoDao downloadInfoDao = daoSession.getDownloadInfoDao();
 
-        DownloadInfo downloadInfo = new DownloadInfo(null, "http", "file", DownloadItemState.DOWNLOADING);
+        DownloadInfo downloadInfo = new DownloadInfo(null, "http", "file", DownloadTask.PENDING);
         List<CustomerHeader> customerHeaders = new ArrayList<>();
         customerHeaders.add(new CustomerHeader(null, 0, "A", "A"));
         customerHeaders.add(new CustomerHeader(null, 0, "B", "A"));

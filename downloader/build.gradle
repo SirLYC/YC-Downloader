@@ -1,8 +1,4 @@
-if (runAlone) {
-    apply plugin: 'com.android.application'
-} else {
-    apply plugin: 'com.android.library'
-}
+apply plugin: 'com.android.library'
 
 apply plugin: 'org.greenrobot.greendao'
 
@@ -10,9 +6,6 @@ apply plugin: 'org.greenrobot.greendao'
 android {
     compileSdkVersion buildInfo['compileSdkVersion']
     defaultConfig {
-        if (runAlone) {
-            applicationId "com.lyc.yuchuan_downloader"
-        }
         minSdkVersion buildInfo['minSdkVersion']
         targetSdkVersion buildInfo['targetSdkVersion']
         versionCode buildInfo['versionCode']
@@ -31,18 +24,6 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
-
-    sourceSets {
-        main {
-            if (runAlone) {
-                java.srcDirs('src/runAlone/java')
-                res.srcDirs('src/runAlone/res')
-                manifest.srcFile 'src/runAlone/AndroidManifest.xml'
-            } else {
-                manifest.srcFile 'src/main/AndroidManifest.xml'
-            }
-        }
-    }
 }
 
 dependencies {
@@ -55,8 +36,4 @@ dependencies {
     androidTestImplementation deps['test-core']
     androidTestImplementation deps['runner']
     androidTestImplementation deps['epresso']
-
-    if (runAlone) {
-        implementation deps['appcompact']
-    }
 }

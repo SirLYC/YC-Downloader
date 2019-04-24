@@ -8,7 +8,6 @@ import com.lyc.downloader.db.CustomerHeaderDao;
 import com.lyc.downloader.db.DaoSession;
 import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.db.DownloadInfoDao;
-import com.lyc.downloader.db.DownloadItemState;
 import com.lyc.downloader.db.DownloadThreadInfo;
 import okhttp3.Call;
 import okhttp3.OkHttpClient;
@@ -89,7 +88,7 @@ public class DownloadTask {
         this.client = client;
         this.customerHeaders = customerHeaders;
         this.downloadListener = downloadListener;
-        this.downloadInfo = new DownloadInfo(null, url, path, DownloadItemState.DOWNLOADING);
+        this.downloadInfo = new DownloadInfo(null, url, path, PENDING);
         setup();
     }
 
@@ -104,22 +103,30 @@ public class DownloadTask {
         this.path = downloadInfo.getPath();
         this.client = client;
         switch (downloadInfo.getDownloadItemState()) {
-            case ERROR:
-                resumable = true;
-                state.set(ERROR);
+            case PENDING:
+            case PREPARING:
+            case RUNNING:
+                state.set(PENDING);
                 break;
-            case DELETE:
-                state.set(CANCELED);
+            case PAUSING:
+            case PAUSED:
+                state.set(PAUSED);
                 break;
             case FINISH:
                 state.set(FINISH);
                 break;
+            case WAITING:
+                state.set(WAITING);
+                break;
+            case CANCELLING:
+            case CANCELED:
+                state.set(CANCELED);
+                break;
+            case ERROR:
+                state.set(ERROR);
+                break;
             case FATAL_ERROR:
                 state.set(FATAL_ERROR);
-                break;
-            case PAUSE:
-                resumable = true;
-                state.set(PAUSING);
                 break;
         }
         Map<String, String> headers = new HashMap<>();
@@ -278,35 +285,9 @@ public class DownloadTask {
     @WorkerThread
     private void stateChange() {
         int newState = state.get();
-        DownloadItemState targetState = null;
-        switch (newState) {
-            case PENDING:
-            case PREPARING:
-            case RUNNING:
-            case WAITING:
-                targetState = DownloadItemState.DOWNLOADING;
-                break;
-            case PAUSING:
-            case PAUSED:
-                targetState = DownloadItemState.PAUSE;
-                break;
-            case FINISH:
-                targetState = DownloadItemState.FINISH;
-                break;
-            case CANCELLING:
-            case CANCELED:
-                targetState = DownloadItemState.DELETE;
-                break;
-            case ERROR:
-                targetState = DownloadItemState.ERROR;
-                break;
-            case FATAL_ERROR:
-                targetState = DownloadItemState.FATAL_ERROR;
-                break;
-        }
 
-        if (targetState != null && downloadInfo != null && downloadInfo.getDownloadItemState() != targetState) {
-            downloadInfo.setDownloadItemState(targetState);
+        if (downloadInfo != null && downloadInfo.getDownloadItemState() != newState) {
+            downloadInfo.setDownloadItemState(newState);
             try {
                 DownloadManager.instance().daoSession.getDownloadInfoDao().save(downloadInfo);
             } catch (Exception e) {
@@ -562,7 +543,7 @@ public class DownloadTask {
 
     @IntDef({PENDING, PREPARING, RUNNING, PAUSING, PAUSED, FINISH, WAITING, CANCELLING, CANCELED, ERROR, FATAL_ERROR})
     @Retention(RetentionPolicy.SOURCE)
-    @interface DownloadState {
+    public @interface DownloadState {
     }
 
     class DownloadRunnable implements Runnable {
@@ -572,7 +553,7 @@ public class DownloadTask {
         private Call call;
         private final int retryCount = 2;
         /**
-         * @see DownloadThreadInfo#tid
+         * @see DownloadThreadInfo#getTid()
          */
         private final int id;
 

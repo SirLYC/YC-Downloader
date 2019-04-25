@@ -4,9 +4,11 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
 import android.util.Log;
+
 import androidx.annotation.MainThread;
 import androidx.annotation.WorkerThread;
 import androidx.collection.LongSparseArray;
+
 import com.lyc.downloader.db.CustomerHeader;
 import com.lyc.downloader.db.CustomerHeaderDao;
 import com.lyc.downloader.db.DaoMaster;
@@ -14,10 +16,6 @@ import com.lyc.downloader.db.DaoMaster.DevOpenHelper;
 import com.lyc.downloader.db.DaoSession;
 import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.db.DownloadInfoDao;
-import okhttp3.OkHttpClient;
-import okhttp3.OkHttpClient.Builder;
-import okhttp3.logging.HttpLoggingInterceptor;
-import okhttp3.logging.HttpLoggingInterceptor.Level;
 
 import java.io.File;
 import java.lang.ref.WeakReference;
@@ -32,7 +30,21 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-import static com.lyc.downloader.DownloadTask.*;
+import okhttp3.OkHttpClient;
+import okhttp3.OkHttpClient.Builder;
+import okhttp3.logging.HttpLoggingInterceptor;
+import okhttp3.logging.HttpLoggingInterceptor.Level;
+
+import static com.lyc.downloader.DownloadTask.CANCELED;
+import static com.lyc.downloader.DownloadTask.ERROR;
+import static com.lyc.downloader.DownloadTask.FATAL_ERROR;
+import static com.lyc.downloader.DownloadTask.FINISH;
+import static com.lyc.downloader.DownloadTask.PAUSED;
+import static com.lyc.downloader.DownloadTask.PAUSING;
+import static com.lyc.downloader.DownloadTask.PENDING;
+import static com.lyc.downloader.DownloadTask.PREPARING;
+import static com.lyc.downloader.DownloadTask.RUNNING;
+import static com.lyc.downloader.DownloadTask.WAITING;
 
 /**
  * @author liuyuchuan
@@ -50,8 +62,7 @@ public class DownloadManager implements DownloadListener {
     private final Context appContext;
     private final LongSparseArray<DownloadTask> taskTable = new LongSparseArray<>();
     private final LongSparseArray<DownloadInfo> infoTable = new LongSparseArray<>();
-    private final ConcurrentHashMap<Long, Long> lastSendSpeedMessageTime = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Long, Long> lastSendUpdateMessageTime = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Long> lastSendMessageTime = new ConcurrentHashMap<>();
     private final Deque<Long> runningTasksId = new ArrayDeque<>();
     private final Deque<Long> waitingTasksId = new ArrayDeque<>();
     private final Deque<Long> errorTasksId = new ArrayDeque<>();
@@ -205,11 +216,11 @@ public class DownloadManager implements DownloadListener {
     }
 
     @Override
-    public void onProgressUpdate(long id, long total, long cur) {
+    public void onProgressUpdate(long id, long total, long cur, double bps) {
         boolean shouldSend = false;
         long currentTime = System.nanoTime();
         if (avoidFrameDrop) {
-            Long lastTime = lastSendUpdateMessageTime.get(id);
+            Long lastTime = lastSendMessageTime.get(id);
             if (lastTime == null || lastTime + sendMessageInterval <= currentTime) {
                 shouldSend = true;
             }
@@ -218,38 +229,12 @@ public class DownloadManager implements DownloadListener {
         }
 
         if (shouldSend) {
-            lastSendUpdateMessageTime.put(id, currentTime);
+            lastSendMessageTime.put(id, currentTime);
             DownloadExecutors.androidMain.execute(() -> {
                 if (userDownloadListener != null) {
                     DownloadListener downloadListener = userDownloadListener.get();
                     if (downloadListener != null) {
-                        downloadListener.onProgressUpdate(id, total, cur);
-                    }
-                }
-            });
-        }
-    }
-
-    @Override
-    public void onSpeedChange(long id, double bps) {
-        boolean shouldSend = false;
-        long currentTime = System.nanoTime();
-        if (avoidFrameDrop) {
-            Long lastTime = lastSendSpeedMessageTime.get(id);
-            if (lastTime == null || lastTime + sendMessageInterval <= currentTime) {
-                shouldSend = true;
-            }
-        } else {
-            shouldSend = true;
-        }
-
-        if (shouldSend) {
-            lastSendSpeedMessageTime.put(id, currentTime);
-            DownloadExecutors.androidMain.execute(() -> {
-                if (userDownloadListener != null) {
-                    DownloadListener downloadListener = userDownloadListener.get();
-                    if (downloadListener != null) {
-                        downloadListener.onSpeedChange(id, bps);
+                        downloadListener.onProgressUpdate(id, total, cur, bps);
                     }
                 }
             });
@@ -258,7 +243,7 @@ public class DownloadManager implements DownloadListener {
 
     @Override
     public void onDownloadError(long id, String reason, boolean fatal) {
-        lastSendSpeedMessageTime.remove(id);
+        lastSendMessageTime.remove(id);
         DownloadExecutors.androidMain.execute(() -> {
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
@@ -278,6 +263,9 @@ public class DownloadManager implements DownloadListener {
     @Override
     public void onDownloadStart(long id) {
         DownloadExecutors.androidMain.execute(() -> {
+            if (!runningTasksId.contains(id)) {
+                runningTasksId.offer(id);
+            }
             if (userDownloadListener != null) {
                 DownloadListener downloadListener = userDownloadListener.get();
                 if (downloadListener != null) {
@@ -301,11 +289,11 @@ public class DownloadManager implements DownloadListener {
 
     @Override
     public void onDownloadPaused(long id) {
-        lastSendSpeedMessageTime.remove(id);
+        lastSendMessageTime.remove(id);
         DownloadExecutors.androidMain.execute(() -> {
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
-            if (runningTasksId.remove(id) || waitingTasksId.remove(id)) {
+            if (runningTasksId.remove(id) | waitingTasksId.remove(id)) {
                 pausingTasksId.add(id);
                 if (userDownloadListener != null) {
                     DownloadListener downloadListener = userDownloadListener.get();
@@ -320,7 +308,7 @@ public class DownloadManager implements DownloadListener {
 
     @Override
     public void onDownloadCanceled(long id) {
-        lastSendSpeedMessageTime.remove(id);
+        lastSendMessageTime.remove(id);
         DownloadExecutors.androidMain.execute(() -> {
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
@@ -328,20 +316,21 @@ public class DownloadManager implements DownloadListener {
                     errorTasksId.remove(id) | finishedTasksId.remove(id) |
                     waitingTasksId.remove(id)) {
                 taskTable.remove(id);
-            }
-            if (userDownloadListener != null) {
-                DownloadListener downloadListener = userDownloadListener.get();
-                if (downloadListener != null) {
-                    downloadListener.onDownloadCanceled(id);
+                Log.d("DownloadManager", "remove task#" + id + " running tasks = " + runningTasksId.size());
+                if (userDownloadListener != null) {
+                    DownloadListener downloadListener = userDownloadListener.get();
+                    if (downloadListener != null) {
+                        downloadListener.onDownloadCanceled(id);
+                    }
                 }
+                schedule();
             }
-            schedule();
         });
     }
 
     @Override
     public void onDownloadTaskWait(long id) {
-        lastSendSpeedMessageTime.remove(id);
+        lastSendMessageTime.remove(id);
         DownloadExecutors.androidMain.execute(() -> {
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
@@ -366,7 +355,7 @@ public class DownloadManager implements DownloadListener {
         DownloadExecutors.androidMain.execute(() -> {
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
-            if (runningTasksId.remove(id)) {
+            if (runningTasksId.remove(id) | waitingTasksId.remove(id) | pausingTasksId.remove(id) | errorTasksId.remove(id)) {
                 finishedTasksId.add(id);
                 if (userDownloadListener != null) {
                     DownloadListener downloadListener = userDownloadListener.get();

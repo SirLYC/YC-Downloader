@@ -3,7 +3,6 @@ package com.lyc.downloader;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author liuyuchuan
@@ -13,22 +12,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class DownloadBuffer {
     private final BlockingQueue<Segment> readBufferQueue;
     private final BlockingQueue<Segment> writeBufferQueue;
-    private final DownloadListener downloadListener;
-    private final long minInformInterval;
-    public volatile long lastUpdateSpeedTime = -1;
-    private volatile long downloadSize;
-    private final long id;
-    private AtomicBoolean expired = new AtomicBoolean(false);
 
-    public DownloadBuffer(long id, int threadCount, int bufferSize, DownloadListener listener, long minInfoInterval) {
-        readBufferQueue = new ArrayBlockingQueue<>(threadCount);
-        writeBufferQueue = new ArrayBlockingQueue<>(threadCount);
-        for (int i = 0; i < threadCount; i++) {
+    public DownloadBuffer(int bufferSize) {
+        readBufferQueue = new ArrayBlockingQueue<>(2);
+        writeBufferQueue = new ArrayBlockingQueue<>(2);
+        for (int i = 0; i < 2; i++) {
             writeBufferQueue.add(new Segment(bufferSize));
         }
-        downloadListener = listener;
-        this.minInformInterval = minInfoInterval;
-        this.id = id;
     }
 
     public Segment availableWriteSegment(long timeout) throws InterruptedException {
@@ -48,18 +38,6 @@ public class DownloadBuffer {
     }
 
     public void enqueueReadSegment(Segment segment) {
-        if (!expired.get() && segment.readSize > 0) {
-            synchronized (this) {
-                long cur = System.nanoTime();
-                long interval = cur - lastUpdateSpeedTime;
-                downloadSize += segment.readSize;
-                if (interval > minInformInterval) {
-                    lastUpdateSpeedTime = cur;
-                    downloadListener.onSpeedChange(id, downloadSize / (interval / 1000000000.0));
-                    downloadSize = 0;
-                }
-            }
-        }
         readBufferQueue.offer(segment);
     }
 
@@ -67,7 +45,4 @@ public class DownloadBuffer {
         writeBufferQueue.offer(segment);
     }
 
-    public void expire() {
-        expired.compareAndSet(false, true);
-    }
 }

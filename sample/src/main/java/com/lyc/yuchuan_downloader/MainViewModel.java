@@ -4,6 +4,7 @@ import androidx.annotation.MainThread;
 import androidx.collection.LongSparseArray;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
+
 import com.lyc.downloader.DownloadListener;
 import com.lyc.downloader.DownloadManager;
 import com.lyc.downloader.db.DownloadInfo;
@@ -12,7 +13,13 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.lyc.downloader.DownloadTask.*;
+import static com.lyc.downloader.DownloadTask.ERROR;
+import static com.lyc.downloader.DownloadTask.FINISH;
+import static com.lyc.downloader.DownloadTask.PAUSED;
+import static com.lyc.downloader.DownloadTask.PAUSING;
+import static com.lyc.downloader.DownloadTask.PREPARING;
+import static com.lyc.downloader.DownloadTask.RUNNING;
+import static com.lyc.downloader.DownloadTask.WAITING;
 
 /**
  * @author liuyuchuan
@@ -53,21 +60,12 @@ public class MainViewModel extends ViewModel implements DownloadManager.SubmitLi
     }
 
     @Override
-    public void onProgressUpdate(long id, long total, long cur) {
+    public void onProgressUpdate(long id, long total, long cur, double bps) {
         DownloadItem item = idToItem.get(id);
         int index = itemList.indexOf(item);
         if (item != null && index != -1) {
             item.setTotalSize(total);
             item.setDownloadedSize(cur);
-            itemList.onChange(index, 1, null);
-        }
-    }
-
-    @Override
-    public void onSpeedChange(long id, double bps) {
-        DownloadItem item = idToItem.get(id);
-        int index = itemList.indexOf(item);
-        if (item != null && index != -1) {
             item.setBps(bps);
             itemList.onChange(index, 1, null);
         }

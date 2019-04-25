@@ -9,9 +9,7 @@ public interface DownloadListener {
     void onPreparing(long id);
 
     // cur, total: byte
-    void onProgressUpdate(long id, long total, long cur);
-
-    void onSpeedChange(long id, double bps);
+    void onProgressUpdate(long id, long total, long cur, double bps);
 
     void onDownloadError(long id, String reason, boolean fatal);
 

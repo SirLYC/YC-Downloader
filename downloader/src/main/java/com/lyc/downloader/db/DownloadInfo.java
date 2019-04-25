@@ -1,6 +1,7 @@
 package com.lyc.downloader.db;
 
 import com.lyc.downloader.DownloadTask.DownloadState;
+
 import org.greenrobot.greendao.DaoException;
 import org.greenrobot.greendao.annotation.Entity;
 import org.greenrobot.greendao.annotation.Generated;
@@ -253,9 +254,7 @@ public class DownloadInfo {
         this.finishedTime = finishedTime;
     }
 
-    /**
-     * called by internal mechanisms, do not call yourself.
-     */
+    /** called by internal mechanisms, do not call yourself. */
     @Generated(hash = 17038220)
     public void __setDaoSession(DaoSession daoSession) {
         this.daoSession = daoSession;

@@ -1,5 +1,10 @@
 # Yuchuan-Downloader
 A multi-thread downloader which supports for HTTP.
+```
+Still in developing...
+May be many bugs...
+Be cautious to use this library...
+```
 
 ## Features
 - [x] HTTP/HTTPS download

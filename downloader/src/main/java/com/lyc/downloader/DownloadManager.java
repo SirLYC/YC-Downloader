@@ -29,6 +29,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 import static com.lyc.downloader.DownloadTask.*;
 
@@ -48,6 +50,8 @@ public class DownloadManager implements DownloadListener {
     private final Context appContext;
     private final LongSparseArray<DownloadTask> taskTable = new LongSparseArray<>();
     private final LongSparseArray<DownloadInfo> infoTable = new LongSparseArray<>();
+    private final ConcurrentHashMap<Long, Long> lastSendSpeedMessageTime = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Long> lastSendUpdateMessageTime = new ConcurrentHashMap<>();
     private final Deque<Long> runningTasksId = new ArrayDeque<>();
     private final Deque<Long> waitingTasksId = new ArrayDeque<>();
     private final Deque<Long> errorTasksId = new ArrayDeque<>();
@@ -58,6 +62,9 @@ public class DownloadManager implements DownloadListener {
     private Set<WeakReference<RecoverListener>> userRecoverListeners = new HashSet<>();
     private int maxRunningTask = 4;
     private boolean recoverTasks;
+    private volatile boolean avoidFrameDrop = true;
+    // ns
+    private long sendMessageInterval = TimeUnit.MILLISECONDS.toNanos(500);
 
     private DownloadManager(OkHttpClient client, Context appContext) {
         this.client = client;
@@ -199,30 +206,59 @@ public class DownloadManager implements DownloadListener {
 
     @Override
     public void onProgressUpdate(long id, long total, long cur) {
-        DownloadExecutors.androidMain.execute(() -> {
-            if (userDownloadListener != null) {
-                DownloadListener downloadListener = userDownloadListener.get();
-                if (downloadListener != null) {
-                    downloadListener.onProgressUpdate(id, total, cur);
-                }
+        boolean shouldSend = false;
+        long currentTime = System.nanoTime();
+        if (avoidFrameDrop) {
+            Long lastTime = lastSendUpdateMessageTime.get(id);
+            if (lastTime == null || lastTime + sendMessageInterval <= currentTime) {
+                shouldSend = true;
             }
-        });
+        } else {
+            shouldSend = true;
+        }
+
+        if (shouldSend) {
+            lastSendUpdateMessageTime.put(id, currentTime);
+            DownloadExecutors.androidMain.execute(() -> {
+                if (userDownloadListener != null) {
+                    DownloadListener downloadListener = userDownloadListener.get();
+                    if (downloadListener != null) {
+                        downloadListener.onProgressUpdate(id, total, cur);
+                    }
+                }
+            });
+        }
     }
 
     @Override
     public void onSpeedChange(long id, double bps) {
-        DownloadExecutors.androidMain.execute(() -> {
-            if (userDownloadListener != null) {
-                DownloadListener downloadListener = userDownloadListener.get();
-                if (downloadListener != null) {
-                    downloadListener.onSpeedChange(id, bps);
-                }
+        boolean shouldSend = false;
+        long currentTime = System.nanoTime();
+        if (avoidFrameDrop) {
+            Long lastTime = lastSendSpeedMessageTime.get(id);
+            if (lastTime == null || lastTime + sendMessageInterval <= currentTime) {
+                shouldSend = true;
             }
-        });
+        } else {
+            shouldSend = true;
+        }
+
+        if (shouldSend) {
+            lastSendSpeedMessageTime.put(id, currentTime);
+            DownloadExecutors.androidMain.execute(() -> {
+                if (userDownloadListener != null) {
+                    DownloadListener downloadListener = userDownloadListener.get();
+                    if (downloadListener != null) {
+                        downloadListener.onSpeedChange(id, bps);
+                    }
+                }
+            });
+        }
     }
 
     @Override
     public void onDownloadError(long id, String reason, boolean fatal) {
+        lastSendSpeedMessageTime.remove(id);
         DownloadExecutors.androidMain.execute(() -> {
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
@@ -265,6 +301,7 @@ public class DownloadManager implements DownloadListener {
 
     @Override
     public void onDownloadPaused(long id) {
+        lastSendSpeedMessageTime.remove(id);
         DownloadExecutors.androidMain.execute(() -> {
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
@@ -283,6 +320,7 @@ public class DownloadManager implements DownloadListener {
 
     @Override
     public void onDownloadCanceled(long id) {
+        lastSendSpeedMessageTime.remove(id);
         DownloadExecutors.androidMain.execute(() -> {
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
@@ -303,6 +341,7 @@ public class DownloadManager implements DownloadListener {
 
     @Override
     public void onDownloadTaskWait(long id) {
+        lastSendSpeedMessageTime.remove(id);
         DownloadExecutors.androidMain.execute(() -> {
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
@@ -426,6 +465,22 @@ public class DownloadManager implements DownloadListener {
     public void setMaxRunningTask(int maxRunningTask) {
         if (maxRunningTask <= 0) maxRunningTask = 1;
         this.maxRunningTask = maxRunningTask;
+    }
+
+    public boolean isAvoidFrameDrop() {
+        return avoidFrameDrop;
+    }
+
+    public void setAvoidFrameDrop(boolean avoidFrameDrop) {
+        this.avoidFrameDrop = avoidFrameDrop;
+    }
+
+    public void setSendMessageInterval(long time, TimeUnit timeUnit) {
+        this.sendMessageInterval = timeUnit.toNanos(time);
+    }
+
+    public long getSendMessageInterval() {
+        return sendMessageInterval;
     }
 
     @MainThread

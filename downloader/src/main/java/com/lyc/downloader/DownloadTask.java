@@ -198,7 +198,6 @@ public class DownloadTask {
                 .url(url)
                 .addHeader("If-Range", "bytes=0-")
                 .build();
-        totalLen = -1;
         return true;
     }
 
@@ -487,14 +486,6 @@ public class DownloadTask {
                 reportError(DownloadError.ERROR_NETWORK);
                 return false;
             }
-            downloadInfo.setTotalSize(totalLen);
-            try {
-                DownloadManager.instance().daoSession.getDownloadInfoDao().save(downloadInfo);
-            } catch (Exception e) {
-                if (BuildConfig.DEBUG) {
-                    e.printStackTrace();
-                }
-            }
 
             downloadThreadInfos = new DownloadThreadInfo[downloadThreadCount];
             if (totalLen == -1) {
@@ -513,6 +504,17 @@ public class DownloadTask {
                     downloadThreadInfos[i] = new DownloadThreadInfo(
                             null, i, i * downloadLen,
                             0, lenSum - last, downloadInfo.getId());
+                }
+            }
+        }
+
+        if (downloadInfo.getTotalSize() != totalLen) {
+            downloadInfo.setTotalSize(totalLen);
+            try {
+                DownloadManager.instance().daoSession.getDownloadInfoDao().save(downloadInfo);
+            } catch (Exception e) {
+                if (BuildConfig.DEBUG) {
+                    e.printStackTrace();
                 }
             }
         }

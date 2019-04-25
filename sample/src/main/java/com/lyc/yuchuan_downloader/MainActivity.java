@@ -85,9 +85,6 @@ public class MainActivity extends AppCompatActivity implements TextWatcher, Down
         ItemAnimator itemAnimator = recyclerView.getItemAnimator();
         if (itemAnimator != null) {
             itemAnimator.setChangeDuration(0);
-            itemAnimator.setRemoveDuration(0);
-            itemAnimator.setAddDuration(0);
-            itemAnimator.setMoveDuration(0);
             SimpleItemAnimator animator = (SimpleItemAnimator) itemAnimator;
             animator.setSupportsChangeAnimations(false);
         }

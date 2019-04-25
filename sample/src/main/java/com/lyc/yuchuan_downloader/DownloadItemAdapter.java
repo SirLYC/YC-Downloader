@@ -145,6 +145,7 @@ public class DownloadItemAdapter extends RecyclerView.Adapter<ViewHolder> implem
                     speed.setText("");
                     button.setText("已完成");
                     button.setEnabled(false);
+                    progressBar.setProgress(100);
                     this.progress.setText(StringUtil.byteToString(total));
                     break;
                 case WAITING:

@@ -12,7 +12,7 @@ Be cautious to use this library...
 - [x] download thread and disk-io thread separated
 - [x] multi download task
 - [x] support for HTTP (resume from break-point)
-- [ ] message control to avoid ui frame drops 
+- [x] message control to avoid ui frame drops 
 - [ ] multi-process support
 - [ ] other protocol download maybe...
 

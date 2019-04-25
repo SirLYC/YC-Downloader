@@ -3,6 +3,7 @@ package com.lyc.downloader;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author liuyuchuan
@@ -17,15 +18,16 @@ public class DownloadBuffer {
     public volatile long lastUpdateSpeedTime = -1;
     private volatile long downloadSize;
     private final long id;
+    private AtomicBoolean expired = new AtomicBoolean(false);
 
-    public DownloadBuffer(long id, int threadCount, int bufferSize, DownloadListener listener, long minInforInterval) {
+    public DownloadBuffer(long id, int threadCount, int bufferSize, DownloadListener listener, long minInfoInterval) {
         readBufferQueue = new ArrayBlockingQueue<>(threadCount);
         writeBufferQueue = new ArrayBlockingQueue<>(threadCount);
         for (int i = 0; i < threadCount; i++) {
             writeBufferQueue.add(new Segment(bufferSize));
         }
         downloadListener = listener;
-        this.minInformInterval = minInforInterval;
+        this.minInformInterval = minInfoInterval;
         this.id = id;
     }
 
@@ -46,7 +48,7 @@ public class DownloadBuffer {
     }
 
     public void enqueueReadSegment(Segment segment) {
-        if (segment.readSize > 0) {
+        if (!expired.get() && segment.readSize > 0) {
             synchronized (this) {
                 long cur = System.nanoTime();
                 long interval = cur - lastUpdateSpeedTime;
@@ -63,5 +65,9 @@ public class DownloadBuffer {
 
     public void enqueueWriteSegment(Segment segment) {
         writeBufferQueue.offer(segment);
+    }
+
+    public void expire() {
+        expired.compareAndSet(false, true);
     }
 }

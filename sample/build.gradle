@@ -25,9 +25,14 @@ android {
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation project(':downloader')
     implementation deps['appcompact']
     implementation deps['core']
     implementation deps['constraintlayout']
+    implementation deps['lifecycle-extensions']
+    implementation deps['recyclerview']
+    compileOnly deps['lombok']
+    annotationProcessor deps['lombok']
 
     testImplementation deps['junit']
     androidTestImplementation deps['runner']

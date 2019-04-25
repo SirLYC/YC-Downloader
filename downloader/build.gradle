@@ -30,6 +30,7 @@ dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation deps['core']
     implementation deps['okhttp']
+    implementation deps['okhttp-log']
     implementation deps['greendao']
 
     testImplementation deps['junit']

@@ -6,7 +6,7 @@ package com.lyc.downloader;
  * @email kevinliu.sir@qq.com
  */
 public interface DownloadListener {
-    void onPrepared(long id);
+    void onPreparing(long id);
 
     // cur, total: byte
     void onProgressUpdate(long id, long total, long cur);
@@ -21,7 +21,7 @@ public interface DownloadListener {
 
     void onDownloadPaused(long id);
 
-    void onDownloadCancelling(long id);
+    void onDownloadTaskWait(long id);
 
     void onDownloadCanceled(long id);
 

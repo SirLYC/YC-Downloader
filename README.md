@@ -5,28 +5,20 @@ A multi-thread downloader which supports for HTTP.
 - [x] HTTP/HTTPS download
 - [x] multi-thread download
 - [x] download thread and disk-io thread separated
-- [ ] multi download task
+- [x] multi download task
 - [x] support for HTTP (resume from break-point)
+- [ ] message control to avoid ui frame drops 
 - [ ] multi-process support
 - [ ] other protocol download maybe...
 
 ## Run
-`app` module is currently deprecated (which will be separated to be an independent downloader use downloader library).
-Current active module is `downloader` module.
-There are two modes to use this module.
-- Use as android Library
-> in root directory, config.gradle:
-```
-ext.runAlone = false
-```
-This module will be an android library which provides download interface as described below.
+**`app` module** 
+    
+    A simple apk instance which uses download library.
 
-- Use as a sample app
-> in root directory, config.gradle:
-```
-ext.runAlone = true
-```
-This module will be an apk after build. And this apk will show feature of `downloader` library module.
+**`downloader` module**
+    
+    Download library.
 
 ## Licence
 ```

@@ -6,8 +6,10 @@ import org.greenrobot.greendao.annotation.Entity;
 import org.greenrobot.greendao.annotation.Generated;
 import org.greenrobot.greendao.annotation.Id;
 import org.greenrobot.greendao.annotation.NotNull;
+import org.greenrobot.greendao.annotation.Property;
 import org.greenrobot.greendao.annotation.ToMany;
 
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -25,10 +27,21 @@ public class DownloadInfo {
     private String url;
     @NotNull
     private String path;
-    @ToMany(referencedJoinProperty = "downloadInfoId")
-    private List<CustomerHeader> customerHeaders;
+    private boolean resumable;
     @DownloadState
     private int downloadItemState;
+    @Property(nameInDb = "downloaded_size")
+    private long downloadedSize;
+    @Property(nameInDb = "total_size")
+    private long totalSize;
+    @Property(nameInDb = "created_time")
+    private Date createdTime;
+    @Property(nameInDb = "finished_time")
+    private Date finishedTime;
+    @Property(nameInDb = "error_msg")
+    private String errorMsg;
+    @ToMany(referencedJoinProperty = "downloadInfoId")
+    private List<CustomerHeader> customerHeaders;
     @ToMany(referencedJoinProperty = "downloadInfoId")
     private List<DownloadThreadInfo> downloadThreadInfos;
     /**
@@ -42,13 +55,20 @@ public class DownloadInfo {
     @Generated(hash = 1465593784)
     private transient DownloadInfoDao myDao;
 
-    @Generated(hash = 121570573)
-    public DownloadInfo(Long id, @NotNull String url, @NotNull String path,
-                        int downloadItemState) {
+    @Generated(hash = 445024864)
+    public DownloadInfo(Long id, @NotNull String url, @NotNull String path, boolean resumable,
+                        int downloadItemState, long downloadedSize, long totalSize, Date createdTime,
+                        Date finishedTime, String errorMsg) {
         this.id = id;
         this.url = url;
         this.path = path;
+        this.resumable = resumable;
         this.downloadItemState = downloadItemState;
+        this.downloadedSize = downloadedSize;
+        this.totalSize = totalSize;
+        this.createdTime = createdTime;
+        this.finishedTime = finishedTime;
+        this.errorMsg = errorMsg;
     }
 
     @Generated(hash = 327086747)
@@ -183,6 +203,54 @@ public class DownloadInfo {
             throw new DaoException("Entity is detached from DAO context");
         }
         myDao.update(this);
+    }
+
+    public boolean getResumable() {
+        return this.resumable;
+    }
+
+    public void setResumable(boolean resumable) {
+        this.resumable = resumable;
+    }
+
+    public long getDownloadedSize() {
+        return this.downloadedSize;
+    }
+
+    public void setDownloadedSize(long downloadedSize) {
+        this.downloadedSize = downloadedSize;
+    }
+
+    public long getTotalSize() {
+        return this.totalSize;
+    }
+
+    public void setTotalSize(long totalSize) {
+        this.totalSize = totalSize;
+    }
+
+    public String getErrorMsg() {
+        return this.errorMsg;
+    }
+
+    public void setErrorMsg(String errorMsg) {
+        this.errorMsg = errorMsg;
+    }
+
+    public Date getCreatedTime() {
+        return this.createdTime;
+    }
+
+    public void setCreatedTime(Date createdTime) {
+        this.createdTime = createdTime;
+    }
+
+    public Date getFinishedTime() {
+        return this.finishedTime;
+    }
+
+    public void setFinishedTime(Date finishedTime) {
+        this.finishedTime = finishedTime;
     }
 
     /**

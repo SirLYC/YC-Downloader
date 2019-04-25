@@ -21,6 +21,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -56,7 +57,7 @@ public class DBTest {
     public void testDB() {
         DownloadInfoDao downloadInfoDao = daoSession.getDownloadInfoDao();
 
-        DownloadInfo downloadInfo = new DownloadInfo(null, "http", "file", DownloadTask.PENDING);
+        DownloadInfo downloadInfo = new DownloadInfo(null, "http", "file", true, 0, 0, 0, new Date(), null, null);
         List<CustomerHeader> customerHeaders = new ArrayList<>();
         customerHeaders.add(new CustomerHeader(null, 0, "A", "A"));
         customerHeaders.add(new CustomerHeader(null, 0, "B", "A"));

@@ -6,24 +6,24 @@ ext {
             'targetSdkVersion' : 28,
             'minSdkVersion'    : 19,
             'versionCode'      : 1,
-            'version'          : '0.1.0'
+            'versionName'      : '0.1.0'
     ]
     deps = [
-            'okhttp'              : 'com.squareup.okhttp3:okhttp:3.14.0',
-            'okhttp-log'          : 'com.squareup.okhttp3:logging-interceptor:3.14.0',
+            'okhttp'              : 'com.squareup.okhttp3:okhttp:3.14.1',
+            'okhttp-log'          : 'com.squareup.okhttp3:logging-interceptor:3.14.1',
             'greendao'            : "org.greenrobot:greendao:$greendao_version",
-            'appcompact'          : 'androidx.appcompat:appcompat:1.1.0-alpha03',
-            'core'                : 'androidx.core:core:1.1.0-alpha01',
-            'constraintlayout'    : "androidx.constraintlayout:constraintlayout:1.1.3",
+            'appcompact'          : 'androidx.appcompat:appcompat:1.1.0-alpha04',
+            'core'                : 'androidx.core:core:1.1.0-alpha05',
+            'constraintlayout'    : "androidx.constraintlayout:constraintlayout:2.0.0-alpha4",
             'material'            : 'com.google.android.material:material:1.0.0',
-            'lifecycle-extensions': 'androidx.lifecycle:lifecycle-extensions:2.0.0',
+            'lifecycle-extensions': 'androidx.lifecycle:lifecycle-extensions:2.1.0-alpha04',
             'lombok'              : "org.projectlombok:lombok:$lombok_version",
-            'recyclerview'        : 'androidx.recyclerview:recyclerview:1.0.0',
+            'recyclerview'        : 'androidx.recyclerview:recyclerview:1.1.0-alpha04',
 
-            'junit'               : 'junit:junit:4.12',
+            'junit'               : 'junit:junit:4.13-beta-2',
 
-            'test-core'           : 'androidx.test:core:1.0.0',
-            'runner'              : 'androidx.test:runner:1.1.2-alpha02',
-            'epresso'             : 'androidx.test.espresso:espresso-core:3.2.0-alpha02'
+            'test-core'           : 'androidx.test:core:1.2.0-alpha04',
+            'runner'              : 'androidx.test:runner:1.2.0-alpha04',
+            'epresso'             : 'androidx.test.espresso:espresso-core:3.2.0-alpha04'
     ]
 }

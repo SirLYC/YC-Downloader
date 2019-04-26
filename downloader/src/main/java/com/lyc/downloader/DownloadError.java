@@ -22,6 +22,10 @@ public class DownloadError {
     public static final int ERROR_SPACE_FULL = 100;
     public static final int ERROR_CREATE_DIR = 101;
     public static final int ERROR_CREATE_TASK = 102;
+    public static final int ERROR_ILLEGAL_URL = 103;
+    public static final int ERROR_EMPTY_RESPONSE = 104;
+    public static final int ERROR_CONNECT_FATAL = 105;
+    public static final int ERROR_CONTENT_EXPIRED = 106;
     private static final DownloadError instance = new DownloadError();
     private Translator translator = new DefaultTranslator();
 
@@ -75,6 +79,14 @@ public class DownloadError {
                     return "创建文件夹失败";
                 case ERROR_CREATE_TASK:
                     return "创建任务失败";
+                case ERROR_ILLEGAL_URL:
+                    return "url不合法";
+                case ERROR_EMPTY_RESPONSE:
+                    return "服务器无可用资源";
+                case ERROR_CONNECT_FATAL:
+                    return "连接失败";
+                case ERROR_CONTENT_EXPIRED:
+                    return "资源过期，请重试";
                 default:
                     return "未知错误";
             }

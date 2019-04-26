@@ -15,6 +15,7 @@ import java.util.Date;
 public class DownloadItem {
     private long id;
     private String path;
+    private String filename;
     private String url;
     private double bps;
     private long totalSize;

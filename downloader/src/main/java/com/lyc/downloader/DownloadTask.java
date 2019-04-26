@@ -1,10 +1,8 @@
 package com.lyc.downloader;
 
 import android.util.Log;
-
 import androidx.annotation.IntDef;
 import androidx.annotation.WorkerThread;
-
 import com.lyc.downloader.db.CustomerHeader;
 import com.lyc.downloader.db.CustomerHeaderDao;
 import com.lyc.downloader.db.DaoSession;
@@ -12,6 +10,13 @@ import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.db.DownloadInfoDao;
 import com.lyc.downloader.db.DownloadThreadInfo;
 import com.lyc.downloader.db.DownloadThreadInfoDao;
+import com.lyc.downloader.utils.DownloadStringUtil;
+import okhttp3.Call;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Request.Builder;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -31,13 +36,8 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-
-import okhttp3.Call;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Request.Builder;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * @author liuyuchuan
@@ -65,16 +65,17 @@ public class DownloadTask {
 
     private static final int MAX_DOWNLOAD_THREAD = 4;
 
+    private static Lock fileCheckLock = new ReentrantLock();
     private final String url;
     private final String path;
+    private String filename;
     private final Map<String, String> customerHeaders;
     private final AtomicInteger state = new AtomicInteger(PENDING);
     private final DownloadError downloadError = DownloadError.instance();
     private File downloadFile;
-    private int downloadThreadCount = 1;
-    private String fileName;
+    private int downloadThreadCount = 4;
     private OkHttpClient client;
-    private Request pivotRequest;
+    private Call pivotCall;
     private long totalLen;
     private DownloadRunnable[] downloadRunnables;
     private WriteToDiskRunnable[] writeToDiskRunnables;
@@ -82,7 +83,6 @@ public class DownloadTask {
     private final DownloadInfo downloadInfo;
     private final DownloadListener downloadListener;
     private DownloadThreadInfo[] downloadThreadInfos;
-    private Call pivotCall;
     private long bufferTimeout = 1;
     private AtomicLong downloadSize = new AtomicLong(0);
     private Request baseRequest;
@@ -136,21 +136,7 @@ public class DownloadTask {
             headers.put(customerHeader.getKey(), customerHeader.getValue());
         }
         this.customerHeaders = headers;
-        setup();
-    }
-
-    private void setup() {
-        downloadFile = new File(path + Constants.TMP_FILE_SUFFIX);
-        int index = path.lastIndexOf('/');
-        if (index == -1) {
-            throw new IllegalArgumentException("path should be absolute path");
-        }
-
-        fileName = path.substring(index + 1);
-        if (fileName.trim().isEmpty()) {
-            throw new IllegalArgumentException("filename should not be empty");
-        }
-        downloadFile = new File(path + Constants.TMP_FILE_SUFFIX);
+        this.filename = downloadInfo.getFilename();
     }
 
     public @DownloadState
@@ -158,26 +144,7 @@ public class DownloadTask {
         return state.get();
     }
 
-    private boolean prepare() {
-        File targetFile = new File(path);
-        if (targetFile.exists() && !targetFile.delete()) {
-            reportError(DownloadError.ERROR_FILE_EXITS);
-            return false;
-        }
-
-        File dir = targetFile.getParentFile();
-        if (dir == null || (!dir.exists() && !dir.mkdirs())) {
-            reportError(DownloadError.ERROR_CREATE_DIR);
-            return false;
-        }
-
-        if (downloadInfo.getId() == null) {
-            if (!persistDownloadInfo()) {
-                reportError(DownloadError.ERROR_CREATE_TASK);
-                return false;
-            }
-        }
-
+    private boolean buildBaseRequest() {
         Builder builder = new Builder();
         if (customerHeaders != null && !customerHeaders.isEmpty()) {
             Set<String> keys = customerHeaders.keySet();
@@ -188,24 +155,125 @@ public class DownloadTask {
                 }
             }
         }
-        builder.url(url);
+        try {
+            builder.url(url);
+        } catch (Exception e) {
+            reportError(DownloadError.ERROR_ILLEGAL_URL);
+            return false;
+        }
         baseRequest = builder.build();
-        // returns 206 if it supports resume or 200 not support
-        pivotRequest = new Request.Builder()
-                .url(url)
-                .addHeader("Range", "bytes=0-")
-                .build();
         return true;
     }
 
-    private boolean persistDownloadInfo() {
+    private boolean doPivotCall() {
+        File parent = new File(path);
+        if ((!parent.exists() && !parent.mkdirs()) || !parent.isDirectory()) {
+            Log.e("DownloadTask", "cannot create directory: " + parent.getAbsolutePath());
+            reportError(DownloadError.ERROR_CREATE_DIR);
+            return false;
+        }
+
+
+        Request pivotRequest = baseRequest.newBuilder().addHeader("Range", "bytes=0-").build();
+        String lastModified;
+        try {
+            pivotCall = client.newCall(pivotRequest);
+            Response response = pivotCall.execute();
+            ResponseBody body = response.body();
+            if (body == null) {
+                reportError(DownloadError.ERROR_EMPTY_RESPONSE);
+                return false;
+            }
+
+            totalLen = body.contentLength();
+            if (totalLen == -1) {
+                String contentRange = response.header("Content-Rang");
+                if (contentRange != null) {
+                    int index = contentRange.lastIndexOf('/');
+                    if (index != -1) {
+                        String len = contentRange.substring(index);
+                        try {
+                            totalLen = Long.parseLong(len);
+                        } catch (NumberFormatException e) {
+                            totalLen = -1;
+                        }
+                    }
+                }
+            }
+            resumable = response.code() == 206 || "bytes".equalsIgnoreCase(response.header("Accept-Ranges"));
+            lastModified = response.header("Last-Modified");
+            if (filename == null) {
+                filename = DownloadStringUtil.parseFilenameFromContentDiposition(response.header("Content-Disposition"));
+                if (filename == null) filename = DownloadStringUtil.parseFilenameFromUrl(url);
+            }
+
+
+            File file = new File(parent, filename);
+            downloadFile = new File(parent, filename + Constants.TMP_FILE_SUFFIX);
+            int maxLength = 127 - Constants.TMP_FILE_SUFFIX.length();
+
+            try {
+                fileCheckLock.lock();
+                if (file.exists() || downloadFile.exists()) {
+                    int index = filename.lastIndexOf(".");
+                    String name;
+                    String extendName;
+                    if (index != -1) {
+                        name = filename.substring(0, index);
+                        extendName = filename.substring(index);
+                    } else {
+                        name = filename;
+                        extendName = "";
+                    }
+
+                    int nameLen = name.length();
+                    StringBuilder sb = new StringBuilder(name);
+                    int cnt = 1;
+                    while (file.exists() || downloadFile.exists()) {
+                        sb.delete(nameLen, sb.length());
+                        sb.append('(').append(cnt++).append(')').append(extendName);
+                        if (sb.length() > maxLength) {
+                            sb.delete(0, sb.length() - maxLength);
+                        }
+                        filename = sb.toString();
+                        Log.w("DownloadTask", "Task#" + downloadInfo.getId() + ": " + "file " + file.getName() +
+                                " exists, " + " try " + filename);
+                        file = new File(parent, filename);
+                        downloadFile = new File(parent, sb.append(Constants.TMP_FILE_SUFFIX).toString());
+                    }
+                }
+                if (!preAllocation()) {
+                    reportError(DownloadError.ERROR_SPACE_FULL);
+                    return false;
+                }
+            } finally {
+                fileCheckLock.unlock();
+            }
+        } catch (IOException e) {
+            reportError(DownloadError.ERROR_CONNECT_FATAL);
+            return false;
+        }
+
+        downloadInfo.setFilename(filename);
+        downloadInfo.setTotalSize(totalLen);
+        downloadInfo.setLastModified(lastModified);
+        persistDownloadInfo();
+        downloadListener.onUpdateInfo(downloadInfo);
+        if (totalLen <= 0 || !resumable) {
+            downloadThreadCount = 1;
+        }
+        return true;
+    }
+
+    private void persistDownloadInfo() {
         DaoSession daoSession = DownloadManager.instance().daoSession;
         try {
             daoSession.runInTx(() -> {
                 DownloadInfoDao downloadInfoDao = daoSession.getDownloadInfoDao();
                 CustomerHeaderDao customerHeaderDao = daoSession.getCustomerHeaderDao();
-                long id = downloadInfoDao.insert(downloadInfo);
-                if (id != -1) {
+                downloadInfoDao.save(downloadInfo);
+                Long id = downloadInfo.getId();
+                if (id != null && id != -1) {
                     for (String key : customerHeaders.keySet()) {
                         String value = customerHeaders.get(key);
                         if (value != null) {
@@ -218,11 +286,7 @@ public class DownloadTask {
             if (BuildConfig.DEBUG) {
                 e.printStackTrace();
             }
-            return false;
         }
-        Long id = downloadInfo.getId();
-
-        return id != null && id != -1;
     }
 
     // resume or start
@@ -259,22 +323,15 @@ public class DownloadTask {
         }
 
         // 如果是从暂停或者错误中恢复，不需要再重试
-        if (!resuming) {
-            if (!prepare()) {
-                handlePauseOrCancel();
-                return;
-            }
-
-            if (!initDownloadInfo()) {
-                handlePauseOrCancel();
-                return;
-            }
+        if ((!resuming || writeToDiskRunnables == null || downloadRunnables == null) && !initDownloadInfo()) {
+            handlePauseOrCancel();
+            return;
         }
         resuming = false;
 
         if (state.compareAndSet(PREPARING, RUNNING)) {
             stateChange();
-            downloadListener.onDownloadStart(downloadInfo.getId());
+            downloadListener.onDownloadStart(downloadInfo);
         } else {
             handlePauseOrCancel();
             return;
@@ -297,11 +354,12 @@ public class DownloadTask {
         new ProgressWatcher().run();
 
         s = state.get();
-        if (s == RUNNING) {
+        if (s == RUNNING || downloadSize.get() == totalLen) {
             // pause will not work now
-            if (!downloadFile.renameTo(new File(path))) {
+            if (!downloadFile.renameTo(new File(path, filename))) {
                 reportError(DownloadError.ERROR_WRITE_FILE);
-                Log.e("DownloadTask", "Task#" + downloadInfo.getId() + " cannot rename file " + downloadFile.getAbsolutePath() + " to " + path);
+                Log.e("DownloadTask", "Task#" + downloadInfo.getId() + " cannot rename file "
+                        + downloadFile.getAbsolutePath() + " to " + path + File.separator + filename);
                 return;
             }
 
@@ -332,7 +390,7 @@ public class DownloadTask {
 
     private void preparedForResuming() {
         int s = state.get();
-        resuming = (s == PAUSED || s == ERROR) && resumable && downloadThreadInfos != null;
+        resuming = (s == PAUSED || s == ERROR) && resumable && downloadThreadInfos != null && writeToDiskRunnables != null;
     }
 
     @WorkerThread
@@ -363,6 +421,9 @@ public class DownloadTask {
     }
 
     private boolean initDownloadInfo() {
+        if (!buildBaseRequest()) {
+            return false;
+        }
         int bufferSize = MAX_BUFFER;
         // try to recover from last download
         try {
@@ -417,94 +478,15 @@ public class DownloadTask {
             downloadSize.set(0);
         }
 
-        if (downloadThreadInfos == null) {
+        if (downloadThreadInfos == null || downloadInfo.getFilename() == null) {
             downloadSize.set(0);
             // fetch last download info if possible
-            Response response;
-            try {
-                pivotCall = client.newCall(pivotRequest);
-                response = pivotCall.execute();
-            } catch (IOException e) {
-                if (BuildConfig.DEBUG) {
-                    e.printStackTrace();
-                }
-                if (pivotCall != null) {
-                    pivotCall.cancel();
-                    pivotCall = null;
-                }
-                reportError(DownloadError.ERROR_NETWORK);
-                return false;
-            }
-
-            int s = state.get();
-            if (s != PREPARING) {
-                return false;
-            }
-
-            pivotCall = null;
-            resumable = response.code() == 206 || "bytes".equalsIgnoreCase(response.header("Accept-Ranges"));
-            if (downloadInfo.getResumable() != resumable) {
-                downloadInfo.setResumable(resumable);
-                try {
-                    DownloadManager.instance().daoSession.getDownloadInfoDao().save(downloadInfo);
-                } catch (Exception e) {
-                    if (BuildConfig.DEBUG) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-            if (resumable) {
-                ResponseBody body = response.body();
-                if (body == null) {
-                    throw new NullPointerException("nothing available for download");
-                }
-                // multi thread with resuming
-                totalLen = body.contentLength();
-                if (totalLen == -1) {
-                    String contentRange = response.header("Content-Rang");
-                    if (contentRange != null) {
-                        int index = contentRange.lastIndexOf('/');
-                        if (index != -1) {
-                            String len = contentRange.substring(index);
-                            try {
-                                totalLen = Long.parseLong(len);
-                            } catch (NumberFormatException e) {
-                                totalLen = -1;
-                            }
-                        }
-                    }
-                }
-
-                bufferSize = chooseBufferSize(totalLen);
-
-                // 选择合适的线程数，每个线程能多做事
-                // 如果每个线程做的事太少了，减少线程数
-                int threadCnt;
-                for (threadCnt = MAX_DOWNLOAD_THREAD; threadCnt >= 1; threadCnt--) {
-                    int readCnt = 100 / threadCnt;
-                    if (readCnt * bufferSize < totalLen) {
-                        break;
-                    }
-                }
-                downloadThreadCount = threadCnt;
-            } else if (response.isSuccessful()) {
-                // single thread without resuming
-                downloadThreadCount = 1;
-                downloadInfo.setResumable(false);
-                try {
-                    downloadInfo.update();
-                } catch (Exception e) {
-                    if (BuildConfig.DEBUG) {
-                        e.printStackTrace();
-                    }
-                }
-            } else {
-                reportError(DownloadError.ERROR_NETWORK);
+            if (!doPivotCall()) {
                 return false;
             }
 
             downloadThreadInfos = new DownloadThreadInfo[downloadThreadCount];
-            if (totalLen == -1) {
+            if (totalLen == -1 || !resumable) {
                 // cannot resume
                 // downloadTreadCount == 1
                 downloadThreadInfos[0] = new DownloadThreadInfo(
@@ -520,22 +502,6 @@ public class DownloadTask {
                     downloadThreadInfos[i] = new DownloadThreadInfo(
                             null, i, i * downloadLen,
                             0, lenSum - last, downloadInfo.getId());
-                }
-            }
-        }
-
-        if (!preAllocation()) {
-            reportError(DownloadError.ERROR_SPACE_FULL);
-            return false;
-        }
-
-        if (downloadInfo.getTotalSize() != totalLen) {
-            downloadInfo.setTotalSize(totalLen);
-            try {
-                DownloadManager.instance().daoSession.getDownloadInfoDao().save(downloadInfo);
-            } catch (Exception e) {
-                if (BuildConfig.DEBUG) {
-                    e.printStackTrace();
                 }
             }
         }
@@ -580,6 +546,9 @@ public class DownloadTask {
                 || (s == WAITING && state.compareAndSet(s, PAUSED))
         ) {
             stateChange();
+            if (pivotCall != null) {
+                pivotCall.cancel();
+            }
             if (downloadRunnables != null) {
                 for (DownloadRunnable downloadRunnable : downloadRunnables) {
                     downloadRunnable.cancelRequest();
@@ -609,6 +578,9 @@ public class DownloadTask {
         if (s != CANCELED) {
             state.set(CANCELED);
             stateChange();
+            if (pivotCall != null) {
+                pivotCall.cancel();
+            }
             if (downloadRunnables != null) {
                 for (DownloadRunnable downloadRunnable : downloadRunnables) {
                     downloadRunnable.cancelRequest();
@@ -644,10 +616,12 @@ public class DownloadTask {
             stateChange();
             downloadListener.onDownloadError(downloadInfo.getId(), downloadError.translate(code), false);
         } else if (fatal && state.compareAndSet(s, FATAL_ERROR)) {
+            if (downloadFile != null && downloadFile.exists() && !downloadFile.delete()) {
+                Log.e("DownloadTask", "cannot delete " + downloadFile.getAbsolutePath() + " when fatal error");
+            }
             DownloadManager.instance().daoSession
                     .getDownloadThreadInfoDao().deleteInTx(downloadInfo.getDownloadThreadInfos());
             downloadInfo.getDownloadThreadInfos().clear();
-            downloadThreadInfos = null;
             stateChange();
             downloadListener.onDownloadError(downloadInfo.getId(), downloadError.translate(code), true);
         }
@@ -655,11 +629,15 @@ public class DownloadTask {
 
     private boolean preAllocation() {
         if (downloadFile == null) {
-            reportError(DownloadError.ERROR_WRITE_FILE);
-            return false;
+            downloadFile = new File(path, filename + Constants.TMP_FILE_SUFFIX);
         }
-        if (downloadFile.exists() || totalLen == -1) {
-            return true;
+
+        try {
+            if (downloadFile.exists() || (totalLen == -1 && downloadFile.createNewFile())) {
+                return true;
+            }
+        } catch (IOException e) {
+            return false;
         }
 
         try (RandomAccessFile raf = new RandomAccessFile(downloadFile, "rw")) {
@@ -725,10 +703,23 @@ public class DownloadTask {
 
             if (currentPos < startPos + contentLen || contentLen == -1) {
                 Request request;
+                boolean requestPartCheck = false;
                 if (contentLen > 0 && resumable) {
-                    request = baseRequest.newBuilder().addHeader("Range", "bytes=" + currentPos + "-" + (startPos + contentLen - 1)).build();
+                    Builder builder = baseRequest.newBuilder()
+                            .addHeader("Range", "bytes=" + currentPos + "-" + (startPos + contentLen - 1));
+                    if (downloadInfo.getLastModified() != null) {
+                        builder.addHeader("If-Range", downloadInfo.getLastModified()).build();
+                        requestPartCheck = true;
+                    }
+                    request = builder.build();
                 } else if (resumable) {
-                    request = baseRequest.newBuilder().addHeader("Range", "bytes=" + currentPos + "-").build();
+                    Builder builder = baseRequest.newBuilder()
+                            .addHeader("Range", "bytes=" + currentPos + "-");
+                    if (downloadInfo.getLastModified() != null) {
+                        builder.addHeader("If-Range", downloadInfo.getLastModified()).build();
+                        requestPartCheck = true;
+                    }
+                    request = builder.build();
                 } else {
                     currentPos = 0;
                     downloadSize.set(0);
@@ -746,6 +737,12 @@ public class DownloadTask {
                     try {
                         call = client.newCall(request);
                         Response response = call.execute();
+                        // TODO: 2019/4/26 auto retry if expired
+                        if (requestPartCheck && response.code() == 200) {
+                            reportError(DownloadError.ERROR_CONTENT_EXPIRED);
+                            return;
+                        }
+
                         if (!response.isSuccessful() || ((body = response.body()) == null))
                             continue;
                         retryCount = 0;
@@ -919,24 +916,37 @@ public class DownloadTask {
     private class ProgressWatcher implements Runnable {
         // ms
         private long watchInterval = 16;
-        // 16ms min
-        private final long minWatchInterval = 16;
+        // 32ms min
+        private final long minWatchInterval = 50;
         // 1s max
         private final long maxWatchInterval = 1000;
         private long lastDownloadSize;
         private long lastTimeNano;
+        private double lastBps;
+        private int skipTime = 0;
+        private final int maxSkipTime = 3;
+        private long lastDeltaSize;
+        private long lastDeltaTime;
 
         @Override
         public void run() {
             lastTimeNano = System.nanoTime();
+            lastBps = 0;
             lastDownloadSize = downloadSize.get();
+            boolean tryAcquire = true;
             while (true) {
                 if (checkEnd()) {
                     return;
                 }
 
+                boolean acquire = false;
+
                 try {
-                    semaphore.tryAcquire(watchInterval, TimeUnit.MILLISECONDS);
+                    if (tryAcquire) {
+                        acquire = semaphore.tryAcquire(downloadThreadCount, watchInterval, TimeUnit.MILLISECONDS);
+                    } else {
+                        Thread.sleep(watchInterval);
+                    }
                 } catch (InterruptedException e) {
                     if (checkEnd()) {
                         return;
@@ -945,9 +955,9 @@ public class DownloadTask {
                 }
 
                 long time = System.nanoTime();
-                long delta = time - lastTimeNano;
-                if (delta < watchInterval * 1000000) {
-                    continue;
+                long deltaTime = time - lastTimeNano;
+                if (deltaTime < watchInterval * 1000000) {
+                    watchInterval = Math.min(watchInterval - minWatchInterval, minWatchInterval);
                 }
 
                 if (checkEnd()) {
@@ -959,18 +969,51 @@ public class DownloadTask {
                 // try to avoid 0B/s...
                 // git it more time to do it
                 if (downloaded < 1 && watchInterval < maxWatchInterval) {
-                    watchInterval = Math.min(watchInterval * 2, maxWatchInterval);
+                    if (!acquire) {
+                        watchInterval = Math.min(watchInterval * 2, maxWatchInterval);
+                    }
+                    tryAcquire = true;
                     continue;
                 }
 
+                double bps = downloaded / (deltaTime / 1e9);
+                if (bps > lastBps * 1.05) {
+                    if (skipTime < maxSkipTime) {
+                        watchInterval = Math.max(minWatchInterval, watchInterval - minWatchInterval);
+                        skipTime++;
+                        // next time sleep
+                        // no need to wait
+                        if (acquire) {
+                            tryAcquire = false;
+                        }
+                        continue;
+                    } else {
+                        downloaded += lastDeltaSize;
+                        deltaTime += lastDeltaTime;
+                        bps = downloaded / (deltaTime / 1e9);
+                    }
+                } else if (lastBps > bps * 1.05) {
+                    if (skipTime < maxSkipTime) {
+                        watchInterval = Math.min(maxWatchInterval, watchInterval + minWatchInterval);
+                        skipTime++;
+                        tryAcquire = true;
+                        continue;
+                    } else {
+                        downloaded += lastDeltaSize;
+                        deltaTime += lastDeltaTime;
+                        bps = downloaded / (deltaTime / 1e9);
+                    }
+                }
+
                 updateDownloadInfo();
-                double bps = downloaded / (delta / 1e9);
                 downloadListener.onProgressUpdate(downloadInfo.getId(), totalLen, current, bps);
                 lastDownloadSize = current;
                 lastTimeNano = time;
-                if (downloaded > 1) {
-                    watchInterval = Math.max(minWatchInterval, watchInterval - minWatchInterval);
-                }
+                lastBps = bps;
+                skipTime = 0;
+                lastDeltaSize = downloaded;
+                lastDeltaTime = deltaTime;
+                tryAcquire = true;
             }
         }
     }

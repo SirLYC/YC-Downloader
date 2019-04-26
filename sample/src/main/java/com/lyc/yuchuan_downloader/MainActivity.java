@@ -32,17 +32,6 @@ public class MainActivity extends AppCompatActivity implements TextWatcher, Down
     private EditText editText;
     private RecyclerView recyclerView;
     private String[] testLinks = new String[]{
-            "https://dl-sh-ctc-2.pchome.net/1e/8p/com.ophone.reader.ui_151.apk?key=4978092c5535384bfbb2ead8fed57be6&tmp=1556028932727",
-            "https://dl-sh-ctc-2.pchome.net/3v/kk/com.adobe.reader_1631.apk?key=4978092c5535384bfbb2ead8fed57be6&tmp=1556028922944",
-            "https://dl-sh-ctc-2.pchome.net/3p/ei/com.nd.android.pandareader_83103.apk?key=4978092c5535384bfbb2ead8fed57be6&tmp=1556028912769",
-            "https://dl-sh-ctc-2.pchome.net/2p/zb/com.kuaikan.comic_533001.apk?key=4978092c5535384bfbb2ead8fed57be6&tmp=1556028903012",
-            "https://dl-sh-ctc-2.pchome.net/1e/8p/com.ophone.reader.ui_151.apk?key=4978092c5535384bfbb2ead8fed57be6&tmp=1556028932727",
-            "https://dl-sh-ctc-2.pchome.net/1e/8p/com.ophone.reader.ui_151.apk?key=4978092c5535384bfbb2ead8fed57be6&tmp=1556028932727",
-            "https://dl-sh-ctc-2.pchome.net/3v/kk/com.adobe.reader_1631.apk?key=4978092c5535384bfbb2ead8fed57be6&tmp=1556028922944",
-            "https://dl-sh-ctc-2.pchome.net/0l/lk/cn.kuwo.player_9104.apk?key=eaf9a1ae02ffc32e3b5e5ec72c9ae101&tmp=1556122118486",
-            "https://dl-sh-ctc-2.pchome.net/0p/f4/tv.pps.mobile_80950.apk?key=eaf9a1ae02ffc32e3b5e5ec72c9ae101&tmp=1556122108806",
-            "https://dl-sh-ctc-2.pchome.net/0r/m0/qqyy320.apk?key=eaf9a1ae02ffc32e3b5e5ec72c9ae101&tmp=1556122097144",
-            "https://dl-sh-ctc-2.pchome.net/0l/73/com.android.vending_81391700.apk?key=eaf9a1ae02ffc32e3b5e5ec72c9ae101&tmp=1556122089001",
             "https://download.alicdn.com/dingtalk-desktop/win_installer/Release/DingTalk_v4.6.21.50011.exe?key=4978092c5535384bfbb2ead8fed57be6&tmp=1556028679291",
             "https://cdn.mysql.com//Downloads/MySQL-5.7/mysql-5.7.25-macos10.14-x86_64.dmg",
             "http://www.officeplus.cn/t/9/92A75810F24C716EB58A695A8A14A0FF.pptx",

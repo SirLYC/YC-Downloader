@@ -1,5 +1,6 @@
 package com.lyc.yuchuan_downloader;
 
+import android.util.Log;
 import androidx.annotation.MainThread;
 import androidx.collection.LongSparseArray;
 import androidx.lifecycle.MutableLiveData;
@@ -46,7 +47,7 @@ public class MainViewModel extends ViewModel implements DownloadManager.SubmitLi
 
     @MainThread
     public void submit(String url) {
-        downloadManager.submit(url, new File(path, FilenameUtil.parseFileName(url)).getAbsolutePath(), null, this);
+        downloadManager.submit(url, path, null, null, this);
     }
 
     @Override
@@ -72,6 +73,17 @@ public class MainViewModel extends ViewModel implements DownloadManager.SubmitLi
     }
 
     @Override
+    public void onUpdateInfo(DownloadInfo info) {
+        DownloadItem item = idToItem.get(info.getId());
+        int index = itemList.indexOf(item);
+        if (item != null && index != -1) {
+            DownloadItem newItem = downloadInfoToItem(info);
+            idToItem.put(info.getId(), newItem);
+            itemList.set(index, newItem);
+        }
+    }
+
+    @Override
     public void onDownloadError(long id, String reason, boolean fatal) {
         DownloadItem item = idToItem.get(id);
         int index = itemList.indexOf(item);
@@ -83,12 +95,13 @@ public class MainViewModel extends ViewModel implements DownloadManager.SubmitLi
     }
 
     @Override
-    public void onDownloadStart(long id) {
-        DownloadItem item = idToItem.get(id);
+    public void onDownloadStart(DownloadInfo info) {
+        DownloadItem item = idToItem.get(info.getId());
         int index = itemList.indexOf(item);
         if (item != null && index != -1) {
-            item.setDownloadState(RUNNING);
-            itemList.onChange(index, 1, null);
+            DownloadItem newItem = downloadInfoToItem(info);
+            idToItem.put(info.getId(), newItem);
+            itemList.set(index, newItem);
         }
     }
 
@@ -152,8 +165,9 @@ public class MainViewModel extends ViewModel implements DownloadManager.SubmitLi
 
     @Override
     public void submitFail(Exception e) {
-        failLiveData.setValue(e.getMessage());
-        failLiveData.setValue(null);
+        e.printStackTrace();
+        failLiveData.postValue(e.getMessage());
+        failLiveData.postValue(null);
     }
 
     @Override
@@ -171,6 +185,7 @@ public class MainViewModel extends ViewModel implements DownloadManager.SubmitLi
         return new DownloadItem(
                 info.getId(),
                 info.getPath(),
+                info.getFilename(),
                 info.getUrl(),
                 0,
                 info.getTotalSize(),

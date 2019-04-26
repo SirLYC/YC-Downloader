@@ -10,7 +10,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.ListUpdateCallback;
 import androidx.recyclerview.widget.RecyclerView;
-import com.lyc.downloader.utils.StringUtil;
+import com.lyc.downloader.utils.DownloadStringUtil;
 import com.lyc.yuchuan_downloader.DownloadItemAdapter.ViewHolder;
 
 import java.util.List;
@@ -103,7 +103,11 @@ public class DownloadItemAdapter extends RecyclerView.Adapter<ViewHolder> implem
 
         private void bind(DownloadItem item) {
             this.item = item;
-            name.setText(FilenameUtil.parseFileName(item.getPath()));
+            if (item.getFilename() != null) {
+                name.setText(item.getFilename());
+            } else {
+                name.setText(DownloadStringUtil.parseFilenameFromUrl(item.getUrl()));
+            }
             int progress;
             long cur = item.getDownloadedSize();
             double total = item.getTotalSize();
@@ -113,7 +117,7 @@ public class DownloadItemAdapter extends RecyclerView.Adapter<ViewHolder> implem
                 progress = Math.max((int) (cur / total * 100), 0);
             }
             progressBar.setProgress(progress);
-            this.progress.setText((StringUtil.byteToString(cur) + "/" + StringUtil.byteToString(total)));
+            this.progress.setText((DownloadStringUtil.byteToString(cur) + "/" + DownloadStringUtil.byteToString(total)));
             switch (item.getDownloadState()) {
                 case PENDING:
                 case PREPARING:
@@ -124,13 +128,13 @@ public class DownloadItemAdapter extends RecyclerView.Adapter<ViewHolder> implem
                     break;
                 case RUNNING:
                     state.setText("下载中");
-                    speed.setText(StringUtil.bpsToString(item.getBps()));
+                    speed.setText(DownloadStringUtil.bpsToString(item.getBps()));
                     button.setText("暂停");
                     button.setEnabled(true);
                     break;
                 case PAUSING:
                     state.setText("正在暂停");
-                    speed.setText(StringUtil.bpsToString(item.getBps()));
+                    speed.setText(DownloadStringUtil.bpsToString(item.getBps()));
                     button.setText("暂停中");
                     button.setEnabled(false);
                     break;
@@ -146,7 +150,7 @@ public class DownloadItemAdapter extends RecyclerView.Adapter<ViewHolder> implem
                     button.setText("已完成");
                     button.setEnabled(false);
                     progressBar.setProgress(100);
-                    this.progress.setText(StringUtil.byteToString(total));
+                    this.progress.setText(DownloadStringUtil.byteToString(total));
                     break;
                 case WAITING:
                     state.setText(("等待中"));

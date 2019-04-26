@@ -4,11 +4,9 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
 import android.util.Log;
-
 import androidx.annotation.MainThread;
 import androidx.annotation.WorkerThread;
 import androidx.collection.LongSparseArray;
-
 import com.lyc.downloader.db.CustomerHeader;
 import com.lyc.downloader.db.CustomerHeaderDao;
 import com.lyc.downloader.db.DaoMaster;
@@ -16,35 +14,17 @@ import com.lyc.downloader.db.DaoMaster.DevOpenHelper;
 import com.lyc.downloader.db.DaoSession;
 import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.db.DownloadInfoDao;
-
-import java.io.File;
-import java.lang.ref.WeakReference;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.Deque;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
-
 import okhttp3.OkHttpClient;
 import okhttp3.OkHttpClient.Builder;
 import okhttp3.logging.HttpLoggingInterceptor;
 import okhttp3.logging.HttpLoggingInterceptor.Level;
 
-import static com.lyc.downloader.DownloadTask.CANCELED;
-import static com.lyc.downloader.DownloadTask.ERROR;
-import static com.lyc.downloader.DownloadTask.FATAL_ERROR;
-import static com.lyc.downloader.DownloadTask.FINISH;
-import static com.lyc.downloader.DownloadTask.PAUSED;
-import static com.lyc.downloader.DownloadTask.PAUSING;
-import static com.lyc.downloader.DownloadTask.PENDING;
-import static com.lyc.downloader.DownloadTask.PREPARING;
-import static com.lyc.downloader.DownloadTask.RUNNING;
-import static com.lyc.downloader.DownloadTask.WAITING;
+import java.lang.ref.WeakReference;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+
+import static com.lyc.downloader.DownloadTask.*;
 
 /**
  * @author liuyuchuan
@@ -242,6 +222,18 @@ public class DownloadManager implements DownloadListener {
     }
 
     @Override
+    public void onUpdateInfo(DownloadInfo downloadInfo) {
+        DownloadExecutors.androidMain.execute(() -> {
+            if (userDownloadListener != null) {
+                DownloadListener downloadListener = userDownloadListener.get();
+                if (downloadListener != null) {
+                    downloadListener.onUpdateInfo(downloadInfo);
+                }
+            }
+        });
+    }
+
+    @Override
     public void onDownloadError(long id, String reason, boolean fatal) {
         lastSendMessageTime.remove(id);
         DownloadExecutors.androidMain.execute(() -> {
@@ -261,15 +253,15 @@ public class DownloadManager implements DownloadListener {
     }
 
     @Override
-    public void onDownloadStart(long id) {
+    public void onDownloadStart(DownloadInfo downloadInfo) {
         DownloadExecutors.androidMain.execute(() -> {
-            if (!runningTasksId.contains(id)) {
-                runningTasksId.offer(id);
+            if (!runningTasksId.contains(downloadInfo.getId())) {
+                runningTasksId.offer(downloadInfo.getId());
             }
             if (userDownloadListener != null) {
                 DownloadListener downloadListener = userDownloadListener.get();
                 if (downloadListener != null) {
-                    downloadListener.onDownloadStart(id);
+                    downloadListener.onDownloadStart(downloadInfo);
                 }
             }
         });
@@ -369,13 +361,9 @@ public class DownloadManager implements DownloadListener {
     }
 
     @WorkerThread
-    private void submitInner(String url, String path, List<CustomerHeader> customerHeaders, SubmitListener listener) {
-        File file = new File(path);
-        if (file.exists()) {
-            DownloadExecutors.androidMain.execute(() -> listener.submitFail(new FileExitsException(file)));
-            return;
-        }
-        DownloadInfo downloadInfo = new DownloadInfo(null, url, path, true, WAITING, 0, 0, new Date(), null, null);
+    private void submitInner(String url, String path, String filename, List<CustomerHeader> customerHeaders, SubmitListener listener) {
+        DownloadInfo downloadInfo = new DownloadInfo(null, url, path, filename, true, WAITING,
+                0, 0, null, new Date(), null, null);
         try {
             Long insertId = daoSession.callInTx(() -> {
                 long id = daoSession.getDownloadInfoDao().insert(downloadInfo);
@@ -434,15 +422,28 @@ public class DownloadManager implements DownloadListener {
         downloadTask.cancel();
     }
 
+
+    /**
+     * @param url             download url; must started with http/https
+     * @param path            nonnull; parent directory of the file
+     * @param filename        self-defined filename; if null, it will be parsed by url or a pivot request by downloadManager
+     * @param customerHeaders customer header (`Range` will be removed)
+     * @param listener        listener to inform submit success or fail
+     */
     @MainThread
-    public void submit(String url, String path, Map<String, String> customerHeaders, SubmitListener listener) {
+    public void submit(String url, String path, String filename, Map<String, String> customerHeaders, SubmitListener listener) {
         List<CustomerHeader> headers = new ArrayList<>();
         if (customerHeaders != null) {
             for (String s : customerHeaders.keySet()) {
-                headers.add(new CustomerHeader(null, 0, s, customerHeaders.get(s)));
+                if (s != null && !s.equalsIgnoreCase("range")) {
+                    headers.add(new CustomerHeader(null, 0, s, customerHeaders.get(s)));
+                }
             }
         }
-        DownloadExecutors.io.execute(() -> submitInner(url, path, headers, listener));
+        if (path == null) {
+            throw new NullPointerException("path cannot be null");
+        }
+        DownloadExecutors.io.execute(() -> submitInner(url, path, filename, headers, listener));
     }
 
     @MainThread
@@ -496,35 +497,17 @@ public class DownloadManager implements DownloadListener {
         return infoTable.get(id);
     }
 
+    @MainThread
     public List<DownloadInfo> queryAllDownloadInfo() {
-        List<DownloadInfo> result = new ArrayList<>();
-        Set<Long> addIds = new HashSet<>();
-        for (Long aLong : runningTasksId) {
-            if (addIds.add(aLong)) {
-                result.add(infoTable.get(aLong));
+        int size = infoTable.size();
+        PriorityQueue<DownloadInfo> queue = new PriorityQueue<>();
+        for (int i = 0; i < size; i++) {
+            DownloadInfo downloadInfo = infoTable.valueAt(i);
+            if (downloadInfo.getDownloadItemState() != CANCELED) {
+                queue.offer(downloadInfo);
             }
         }
-        for (Long aLong : waitingTasksId) {
-            if (addIds.add(aLong)) {
-                result.add(infoTable.get(aLong));
-            }
-        }
-        for (Long aLong : pausingTasksId) {
-            if (addIds.add(aLong)) {
-                result.add(infoTable.get(aLong));
-            }
-        }
-        for (Long aLong : errorTasksId) {
-            if (addIds.add(aLong)) {
-                result.add(infoTable.get(aLong));
-            }
-        }
-        for (Long aLong : finishedTasksId) {
-            if (addIds.add(aLong)) {
-                result.add(infoTable.get(aLong));
-            }
-        }
-        return result;
+        return new ArrayList<>(queue);
     }
 
     public interface SubmitListener {

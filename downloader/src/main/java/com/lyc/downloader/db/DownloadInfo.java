@@ -21,13 +21,14 @@ import java.util.List;
                 @org.greenrobot.greendao.annotation.Index(value = "url DESC")
         }
 )
-public class DownloadInfo {
+public class DownloadInfo implements Comparable<DownloadInfo> {
     @Id(autoincrement = true)
     private Long id;
     @NotNull
     private String url;
     @NotNull
     private String path;
+    private String filename;
     private boolean resumable;
     @DownloadState
     private int downloadItemState;
@@ -35,6 +36,8 @@ public class DownloadInfo {
     private long downloadedSize;
     @Property(nameInDb = "total_size")
     private long totalSize;
+    @Property(nameInDb = "last_modified")
+    private String lastModified;
     @Property(nameInDb = "created_time")
     private Date createdTime;
     @Property(nameInDb = "finished_time")
@@ -56,17 +59,19 @@ public class DownloadInfo {
     @Generated(hash = 1465593784)
     private transient DownloadInfoDao myDao;
 
-    @Generated(hash = 445024864)
-    public DownloadInfo(Long id, @NotNull String url, @NotNull String path, boolean resumable,
-                        int downloadItemState, long downloadedSize, long totalSize, Date createdTime,
-                        Date finishedTime, String errorMsg) {
+    @Generated(hash = 9671916)
+    public DownloadInfo(Long id, @NotNull String url, @NotNull String path, String filename,
+            boolean resumable, int downloadItemState, long downloadedSize, long totalSize,
+            String lastModified, Date createdTime, Date finishedTime, String errorMsg) {
         this.id = id;
         this.url = url;
         this.path = path;
+        this.filename = filename;
         this.resumable = resumable;
         this.downloadItemState = downloadItemState;
         this.downloadedSize = downloadedSize;
         this.totalSize = totalSize;
+        this.lastModified = lastModified;
         this.createdTime = createdTime;
         this.finishedTime = finishedTime;
         this.errorMsg = errorMsg;
@@ -252,6 +257,28 @@ public class DownloadInfo {
 
     public void setFinishedTime(Date finishedTime) {
         this.finishedTime = finishedTime;
+    }
+
+    @Override
+    public int compareTo(DownloadInfo o) {
+        if (o == null) return 1;
+        return this.createdTime.compareTo(o.createdTime);
+    }
+
+    public String getFilename() {
+        return this.filename;
+    }
+
+    public void setFilename(String filename) {
+        this.filename = filename;
+    }
+
+    public String getLastModified() {
+        return this.lastModified;
+    }
+
+    public void setLastModified(String lastModified) {
+        this.lastModified = lastModified;
     }
 
     /** called by internal mechanisms, do not call yourself. */

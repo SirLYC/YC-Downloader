@@ -1,5 +1,7 @@
 package com.lyc.downloader;
 
+import com.lyc.downloader.db.DownloadInfo;
+
 /**
  * @author liuyuchuan
  * @date 2019/4/1
@@ -8,12 +10,15 @@ package com.lyc.downloader;
 public interface DownloadListener {
     void onPreparing(long id);
 
-    // cur, total: byte
+    // cur, total: bytes
+    // bps: bytes/s
     void onProgressUpdate(long id, long total, long cur, double bps);
+
+    void onUpdateInfo(DownloadInfo downloadInfo);
 
     void onDownloadError(long id, String reason, boolean fatal);
 
-    void onDownloadStart(long id);
+    void onDownloadStart(DownloadInfo downloadInfo);
 
     void onDownloadPausing(long id);
 

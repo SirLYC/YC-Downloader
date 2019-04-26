@@ -57,7 +57,7 @@ public class DBTest {
     public void testDB() {
         DownloadInfoDao downloadInfoDao = daoSession.getDownloadInfoDao();
 
-        DownloadInfo downloadInfo = new DownloadInfo(null, "http", "file", true, 0, 0, 0, new Date(), null, null);
+        DownloadInfo downloadInfo = new DownloadInfo(null, "http", "file", "name", true, 0, 0, 0, null, new Date(), null, null);
         List<CustomerHeader> customerHeaders = new ArrayList<>();
         customerHeaders.add(new CustomerHeader(null, 0, "A", "A"));
         customerHeaders.add(new CustomerHeader(null, 0, "B", "A"));

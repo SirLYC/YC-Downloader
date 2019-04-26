@@ -97,7 +97,7 @@ public class DownloadStringUtil {
         return url.replaceAll("/", "");
     }
 
-    public static String parseFilenameFromContentDiposition(String value) {
+    public static String parseFilenameFromContentDisposition(String value) {
         if (value == null || (value = value.trim()).isEmpty()) return null;
         int index = value.indexOf("filename=");
         if (index != -1) {

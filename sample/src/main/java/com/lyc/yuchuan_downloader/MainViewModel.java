@@ -1,26 +1,17 @@
 package com.lyc.yuchuan_downloader;
 
-import android.util.Log;
 import androidx.annotation.MainThread;
 import androidx.collection.LongSparseArray;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
-
 import com.lyc.downloader.DownloadListener;
 import com.lyc.downloader.DownloadManager;
 import com.lyc.downloader.db.DownloadInfo;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.lyc.downloader.DownloadTask.ERROR;
-import static com.lyc.downloader.DownloadTask.FINISH;
-import static com.lyc.downloader.DownloadTask.PAUSED;
-import static com.lyc.downloader.DownloadTask.PAUSING;
-import static com.lyc.downloader.DownloadTask.PREPARING;
-import static com.lyc.downloader.DownloadTask.RUNNING;
-import static com.lyc.downloader.DownloadTask.WAITING;
+import static com.lyc.downloader.DownloadTask.*;
 
 /**
  * @author liuyuchuan
@@ -154,8 +145,7 @@ public class MainViewModel extends ViewModel implements DownloadManager.SubmitLi
     }
 
     @Override
-    public void submitSuccess(long id) {
-        DownloadInfo downloadInfo = downloadManager.queryDownloadInfo(id);
+    public void submitSuccess(DownloadInfo downloadInfo) {
         if (downloadInfo != null) {
             DownloadItem item = downloadInfoToItem(downloadInfo);
             itemList.add(item);

@@ -38,6 +38,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * @author liuyuchuan
@@ -63,9 +65,10 @@ public class DownloadTask {
     private static final int MAX_BUFFER = 1 << 16;
     private static final int MIN_BUFFER = 4 * (2 << 10);
 
+    // TODO: 2019/4/26 design a sutable thread count choose algorithm...
     private static final int MAX_DOWNLOAD_THREAD = 4;
 
-    private static Lock fileCheckLock = new ReentrantLock();
+    private static Lock fileLock = new ReentrantLock();
     private final String url;
     private final String path;
     private String filename;
@@ -90,6 +93,7 @@ public class DownloadTask {
     private boolean resuming;
     private AtomicInteger leftActiveThreadCount = new AtomicInteger();
     private Semaphore semaphore;
+    static Pattern reduplicatedFilenamePattern = Pattern.compile("^(.*)\\(([1-9][0-9]*)\\)$");
 
     /**
      * only used by {@link DownloadManager}
@@ -173,7 +177,6 @@ public class DownloadTask {
             return false;
         }
 
-
         Request pivotRequest = baseRequest.newBuilder().addHeader("Range", "bytes=0-").build();
         String lastModified;
         try {
@@ -203,7 +206,7 @@ public class DownloadTask {
             resumable = response.code() == 206 || "bytes".equalsIgnoreCase(response.header("Accept-Ranges"));
             lastModified = response.header("Last-Modified");
             if (filename == null) {
-                filename = DownloadStringUtil.parseFilenameFromContentDiposition(response.header("Content-Disposition"));
+                filename = DownloadStringUtil.parseFilenameFromContentDisposition(response.header("Content-Disposition"));
                 if (filename == null) filename = DownloadStringUtil.parseFilenameFromUrl(url);
             }
 
@@ -213,7 +216,7 @@ public class DownloadTask {
             int maxLength = 127 - Constants.TMP_FILE_SUFFIX.length();
 
             try {
-                fileCheckLock.lock();
+                fileLock.lock();
                 if (file.exists() || downloadFile.exists()) {
                     int index = filename.lastIndexOf(".");
                     String name;
@@ -226,9 +229,15 @@ public class DownloadTask {
                         extendName = "";
                     }
 
+                    int cnt = 1;
+                    Matcher matcher = reduplicatedFilenamePattern.matcher(filename);
+                    if (matcher.find() && matcher.groupCount() == 2) {
+                        name = matcher.group(1);
+                        cnt = Integer.parseInt(matcher.group(2));
+                    }
+
                     int nameLen = name.length();
                     StringBuilder sb = new StringBuilder(name);
-                    int cnt = 1;
                     while (file.exists() || downloadFile.exists()) {
                         sb.delete(nameLen, sb.length());
                         sb.append('(').append(cnt++).append(')').append(extendName);
@@ -247,7 +256,7 @@ public class DownloadTask {
                     return false;
                 }
             } finally {
-                fileCheckLock.unlock();
+                fileLock.unlock();
             }
         } catch (IOException e) {
             reportError(DownloadError.ERROR_CONNECT_FATAL);
@@ -290,18 +299,20 @@ public class DownloadTask {
     }
 
     // resume or start
-    void start(boolean restart) {
+    boolean start(boolean restart) {
         int s = state.get();
         if (restart) {
             if (s != RUNNING && s != PAUSING && s != CANCELED && state.compareAndSet(s, PENDING)) {
                 stateChange();
                 DownloadExecutors.io.execute(this::execute);
+                return true;
             }
-        } else {
-            if (s != RUNNING && s != PAUSING && s != CANCELED && s != FINISH) {
-                DownloadExecutors.io.execute(this::execute);
-            }
+        } else if (s != RUNNING && s != PAUSING && s != CANCELED && s != FINISH) {
+            DownloadExecutors.io.execute(this::execute);
+            return true;
         }
+
+        return false;
     }
 
     @WorkerThread
@@ -355,12 +366,22 @@ public class DownloadTask {
 
         s = state.get();
         if (s == RUNNING || downloadSize.get() == totalLen) {
-            // pause will not work now
-            if (!downloadFile.renameTo(new File(path, filename))) {
-                reportError(DownloadError.ERROR_WRITE_FILE);
-                Log.e("DownloadTask", "Task#" + downloadInfo.getId() + " cannot rename file "
-                        + downloadFile.getAbsolutePath() + " to " + path + File.separator + filename);
-                return;
+            try {
+                fileLock.lock();
+                File targetFile = new File(path, filename);
+                // pause will not work now
+                if (!downloadFile.renameTo(targetFile) && !(targetFile.delete() && downloadFile.renameTo(targetFile))) {
+                    reportError(DownloadError.ERROR_WRITE_FILE);
+                    Log.e("DownloadTask", "Task#" + downloadInfo.getId() + " cannot rename file "
+                            + downloadFile.getAbsolutePath() + " to " + targetFile.getAbsolutePath());
+                    return;
+                }
+            } finally {
+                fileLock.unlock();
+            }
+
+            if (downloadInfo.getTotalSize() <= 0) {
+                downloadInfo.setTotalSize(downloadSize.get());
             }
 
             s = state.get();
@@ -385,7 +406,19 @@ public class DownloadTask {
             downloadListener.onDownloadPaused(downloadInfo.getId());
             preparedForResuming();
             return true;
-        } else return s == CANCELED;
+        } else if (s == CANCELED) {
+            try {
+                fileLock.lock();
+                if (downloadFile != null && downloadFile.exists() && !downloadFile.delete()) {
+                    Log.e("DownloadTask", "Task#" + downloadInfo.getId() + " cannot delete download tmp file "
+                            + downloadFile.getAbsolutePath() + " when canceled.");
+                }
+            } finally {
+                fileLock.unlock();
+            }
+        }
+
+        return false;
     }
 
     private void preparedForResuming() {
@@ -463,6 +496,7 @@ public class DownloadTask {
 
                 if (downloadThreadInfos != null) {
                     bufferSize = chooseBufferSize(totalLen);
+                    downloadFile = new File(path, filename = Constants.TMP_FILE_SUFFIX);
                     downloadThreadCount = downloadThreadInfos.length;
                 }
             }

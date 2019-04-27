@@ -43,11 +43,14 @@ class DownloadExecutors {
     static final Executor message = new Executor() {
         @Override
         public void execute(Runnable command) {
-            try {
-                messageReadyLatch.await();
-            } catch (InterruptedException e) {
-                if (BuildConfig.DEBUG) {
-                    e.printStackTrace();
+            while (true) {
+                try {
+                    messageReadyLatch.await();
+                    break;
+                } catch (InterruptedException e) {
+                    if (BuildConfig.DEBUG) {
+                        e.printStackTrace();
+                    }
                 }
             }
             messageHandler.post(command);

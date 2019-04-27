@@ -135,12 +135,11 @@ public class MainViewModel extends ViewModel implements DownloadManager.SubmitLi
     }
 
     @Override
-    public void onDownloadFinished(long id) {
-        DownloadItem item = idToItem.get(id);
+    public void onDownloadFinished(DownloadInfo downloadInfo) {
+        DownloadItem item = idToItem.get(downloadInfo.getId());
         int index = itemList.indexOf(item);
         if (item != null && index != -1) {
-            item.setDownloadState(FINISH);
-            itemList.onChange(index, 1, null);
+            itemList.set(index, downloadInfoToItem(downloadInfo));
         }
     }
 

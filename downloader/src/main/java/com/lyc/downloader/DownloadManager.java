@@ -14,13 +14,21 @@ import com.lyc.downloader.db.DaoMaster.DevOpenHelper;
 import com.lyc.downloader.db.DaoSession;
 import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.db.DownloadInfoDao;
+import com.lyc.downloader.utils.UniqueDequeue;
 import okhttp3.OkHttpClient;
 import okhttp3.OkHttpClient.Builder;
 import okhttp3.logging.HttpLoggingInterceptor;
 import okhttp3.logging.HttpLoggingInterceptor.Level;
 
 import java.lang.ref.WeakReference;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.Deque;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static com.lyc.downloader.DownloadTask.*;
@@ -43,11 +51,11 @@ public class DownloadManager implements DownloadListener {
     private final LongSparseArray<DownloadTask> taskTable = new LongSparseArray<>();
     private final LongSparseArray<DownloadInfo> infoTable = new LongSparseArray<>();
     private final LongSparseArray<Long> lastSendMessageTime = new LongSparseArray<>();
-    private final Deque<Long> runningTasksId = new ArrayDeque<>();
-    private final Deque<Long> waitingTasksId = new ArrayDeque<>();
-    private final Deque<Long> errorTasksId = new ArrayDeque<>();
-    private final Deque<Long> pausingTasksId = new ArrayDeque<>();
-    private final Deque<Long> finishedTasksId = new ArrayDeque<>();
+    private final Deque<Long> runningTasksId = new UniqueDequeue<>();
+    private final Deque<Long> waitingTasksId = new UniqueDequeue<>();
+    private final Deque<Long> errorTasksId = new UniqueDequeue<>();
+    private final Deque<Long> pausingTasksId = new UniqueDequeue<>();
+    private final Deque<Long> finishedTasksId = new UniqueDequeue<>();
     // avoid memory leak
     private WeakReference<DownloadListener> userDownloadListener;
     private Set<WeakReference<RecoverListener>> userRecoverListeners = new HashSet<>();
@@ -116,7 +124,6 @@ public class DownloadManager implements DownloadListener {
                             case PENDING:
                             case PREPARING:
                             case RUNNING:
-                                waitingTasksId.offer(id);
                                 downloadTask.toWait();
                                 break;
                             case PAUSING:
@@ -142,10 +149,9 @@ public class DownloadManager implements DownloadListener {
                     for (Long aLong : waitingList) {
                         DownloadTask downloadTask = taskTable.get(aLong);
                         if (downloadTask != null) {
-                            waitingTasksId.offer(aLong);
+                            downloadTask.toWait();
                         }
                     }
-                    schedule();
                     Log.d("DownloadManager", "recovered " + downloadInfoList.size() + " tasks!");
                     recoverTasks = true;
                     List<DownloadInfo> list = queryAllDownloadInfo();
@@ -363,8 +369,9 @@ public class DownloadManager implements DownloadListener {
     }
 
     @Override
-    public void onDownloadFinished(long id) {
+    public void onDownloadFinished(DownloadInfo downloadInfo) {
         DownloadExecutors.message.execute(() -> {
+            long id = downloadInfo.getId();
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
             if (runningTasksId.remove(id) | waitingTasksId.remove(id) | pausingTasksId.remove(id) | errorTasksId.remove(id)) {
@@ -373,7 +380,7 @@ public class DownloadManager implements DownloadListener {
                     if (userDownloadListener != null) {
                         DownloadListener downloadListener = userDownloadListener.get();
                         if (downloadListener != null) {
-                            downloadListener.onDownloadFinished(id);
+                            downloadListener.onDownloadFinished(downloadInfo);
                         }
                     }
                 });

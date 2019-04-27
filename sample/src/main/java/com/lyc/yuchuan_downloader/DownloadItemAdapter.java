@@ -26,7 +26,7 @@ public class DownloadItemAdapter extends RecyclerView.Adapter<ViewHolder> implem
     private final List<DownloadItem> downloadItemList;
     private final OnItemButtonClickListener onItemButtonClickListener;
 
-    public DownloadItemAdapter(List<DownloadItem> downloadItemList, OnItemButtonClickListener onItemButtonClickListener) {
+    DownloadItemAdapter(List<DownloadItem> downloadItemList, OnItemButtonClickListener onItemButtonClickListener) {
         this.downloadItemList = downloadItemList;
         this.onItemButtonClickListener = onItemButtonClickListener;
     }
@@ -106,18 +106,19 @@ public class DownloadItemAdapter extends RecyclerView.Adapter<ViewHolder> implem
             if (item.getFilename() != null) {
                 name.setText(item.getFilename());
             } else {
-                name.setText(DownloadStringUtil.parseFilenameFromUrl(item.getUrl()));
+                name.setText(item.getUrl());
             }
             int progress;
             long cur = item.getDownloadedSize();
             double total = item.getTotalSize();
             if (total <= 0) {
                 progress = 0;
+                this.progress.setText(DownloadStringUtil.byteToString(total));
             } else {
                 progress = Math.max((int) (cur / total * 100), 0);
+                this.progress.setText((DownloadStringUtil.byteToString(cur) + "/" + DownloadStringUtil.byteToString(total)));
             }
             progressBar.setProgress(progress);
-            this.progress.setText((DownloadStringUtil.byteToString(cur) + "/" + DownloadStringUtil.byteToString(total)));
             switch (item.getDownloadState()) {
                 case PENDING:
                 case PREPARING:
@@ -172,7 +173,7 @@ public class DownloadItemAdapter extends RecyclerView.Adapter<ViewHolder> implem
                     }
                     state.setText(errorMessage);
                     speed.setText("");
-                    button.setText("开始");
+                    button.setText("重试");
                     button.setEnabled(true);
                     break;
             }

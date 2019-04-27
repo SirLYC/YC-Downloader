@@ -28,5 +28,5 @@ public interface DownloadListener {
 
     void onDownloadCanceled(long id);
 
-    void onDownloadFinished(long id);
+    void onDownloadFinished(DownloadInfo downloadInfo);
 }

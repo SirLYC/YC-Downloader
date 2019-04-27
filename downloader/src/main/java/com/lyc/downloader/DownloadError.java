@@ -15,6 +15,7 @@ public class DownloadError {
     public static final int ERROR_DOWNLOAD_FAIL = 2;
     public static final int ERROR_WRITE_FILE = 3;
     public static final int ERROR_NETWORK = 4;
+    public static final int ERROR_CONNECT = 5;
     /**
      * fatal errors: >= 100
      * cannot be resumed
@@ -83,6 +84,7 @@ public class DownloadError {
                     return "url不合法";
                 case ERROR_EMPTY_RESPONSE:
                     return "服务器无可用资源";
+                case ERROR_CONNECT:
                 case ERROR_CONNECT_FATAL:
                     return "连接失败";
                 case ERROR_CONTENT_EXPIRED:

@@ -281,6 +281,28 @@ public class DownloadInfo implements Comparable<DownloadInfo> {
         this.lastModified = lastModified;
     }
 
+    @Override
+    public String toString() {
+        return "DownloadInfo{" +
+                "id=" + id +
+                ", url='" + url + '\'' +
+                ", path='" + path + '\'' +
+                ", filename='" + filename + '\'' +
+                ", resumable=" + resumable +
+                ", downloadItemState=" + downloadItemState +
+                ", downloadedSize=" + downloadedSize +
+                ", totalSize=" + totalSize +
+                ", lastModified='" + lastModified + '\'' +
+                ", createdTime=" + createdTime +
+                ", finishedTime=" + finishedTime +
+                ", errorMsg='" + errorMsg + '\'' +
+                ", customerHeaders=" + customerHeaders +
+                ", downloadThreadInfos=" + downloadThreadInfos +
+                ", daoSession=" + daoSession +
+                ", myDao=" + myDao +
+                '}';
+    }
+
     /** called by internal mechanisms, do not call yourself. */
     @Generated(hash = 17038220)
     public void __setDaoSession(DaoSession daoSession) {

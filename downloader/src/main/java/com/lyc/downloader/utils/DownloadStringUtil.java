@@ -3,6 +3,8 @@ package com.lyc.downloader.utils;
 import com.lyc.downloader.Constants;
 import org.greenrobot.greendao.annotation.NotNull;
 
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
 import java.text.DecimalFormat;
 
 /**
@@ -100,13 +102,24 @@ public class DownloadStringUtil {
     public static String parseFilenameFromContentDisposition(String value) {
         if (value == null || (value = value.trim()).isEmpty()) return null;
         int index = value.indexOf("filename=");
+
+        String processName = null;
+
         if (index != -1) {
-            return value.substring(index + 1).trim();
+            processName = value.substring(index + 9).trim();
+        } else if ((index = value.indexOf("name=")) != -1) {
+            processName = value.substring(index + 5).trim();
         }
-        index = value.indexOf("name=");
-        if (index != -1) {
-            return value.substring(index).trim();
+
+        if (processName != null && !processName.isEmpty()) {
+            try {
+                return URLDecoder.decode(processName, "utf-8");
+            } catch (UnsupportedEncodingException e) {
+                Logger.e("DownloadStringUtil", "try to decode url string: " + processName, e);
+                return processName;
+            }
         }
+
         return null;
     }
 }

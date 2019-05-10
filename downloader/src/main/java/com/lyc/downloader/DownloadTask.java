@@ -2,6 +2,7 @@ package com.lyc.downloader;
 
 import androidx.annotation.IntDef;
 import androidx.annotation.WorkerThread;
+
 import com.lyc.downloader.db.CustomerHeader;
 import com.lyc.downloader.db.DaoSession;
 import com.lyc.downloader.db.DownloadInfo;
@@ -10,12 +11,6 @@ import com.lyc.downloader.db.DownloadThreadInfo;
 import com.lyc.downloader.db.DownloadThreadInfoDao;
 import com.lyc.downloader.utils.DownloadStringUtil;
 import com.lyc.downloader.utils.Logger;
-import okhttp3.Call;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Request.Builder;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -24,11 +19,9 @@ import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
@@ -39,6 +32,13 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import okhttp3.Call;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Request.Builder;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 /**
  * @author liuyuchuan
@@ -68,7 +68,6 @@ public class DownloadTask {
     private static final int MAX_DOWNLOAD_THREAD = 4;
 
     private static Lock fileLock = new ReentrantLock();
-    private final Map<String, String> customerHeaders;
     // ATTENTION: SYNC OPERATE
     private volatile int state;
     private final Lock stateLock = new ReentrantLock();
@@ -130,11 +129,6 @@ public class DownloadTask {
         }
         downloadSize.set(downloadInfo.getDownloadedSize());
         downloadInfo.setDownloadItemState(state);
-        Map<String, String> headers = new HashMap<>();
-        for (CustomerHeader customerHeader : downloadInfo.getCustomerHeaders()) {
-            headers.put(customerHeader.getKey(), customerHeader.getValue());
-        }
-        this.customerHeaders = headers;
     }
 
     public @DownloadState

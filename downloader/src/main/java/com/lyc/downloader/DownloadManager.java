@@ -14,6 +14,7 @@ import com.lyc.downloader.db.DaoMaster.DevOpenHelper;
 import com.lyc.downloader.db.DaoSession;
 import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.db.DownloadInfoDao;
+import com.lyc.downloader.utils.Logger;
 import com.lyc.downloader.utils.UniqueDequeue;
 import okhttp3.OkHttpClient;
 import okhttp3.OkHttpClient.Builder;
@@ -22,13 +23,13 @@ import okhttp3.logging.HttpLoggingInterceptor.Level;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Deque;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
-import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static com.lyc.downloader.DownloadTask.*;
@@ -38,7 +39,7 @@ import static com.lyc.downloader.DownloadTask.*;
  * @date 2019/4/1
  * @email kevinliu.sir@qq.com
  */
-public class DownloadManager implements DownloadListener {
+class DownloadManager implements DownloadListener, DownloadController, DownloadInfoProvider {
 
     static final String DB_NAME = "yuchuan_downloader_db";
     @SuppressLint("StaticFieldLeak")
@@ -55,15 +56,14 @@ public class DownloadManager implements DownloadListener {
     private final Deque<Long> waitingTasksId = new UniqueDequeue<>();
     private final Deque<Long> errorTasksId = new UniqueDequeue<>();
     private final Deque<Long> pausingTasksId = new UniqueDequeue<>();
-    private final Deque<Long> finishedTasksId = new UniqueDequeue<>();
     // avoid memory leak
     private WeakReference<DownloadListener> userDownloadListener;
-    private Set<WeakReference<RecoverListener>> userRecoverListeners = new HashSet<>();
     private int maxRunningTask = 4;
-    private boolean recoverTasks;
     private volatile boolean avoidFrameDrop = true;
     // ns
     private volatile long sendMessageInterval = TimeUnit.MILLISECONDS.toNanos(500);
+
+    private CountDownLatch recoverCountDownLatch = new CountDownLatch(1);
 
     private DownloadManager(OkHttpClient client, Context appContext) {
         this.client = client;
@@ -74,43 +74,68 @@ public class DownloadManager implements DownloadListener {
         recoverDownloadTasks();
     }
 
-    public static void init(OkHttpClient client, Context context) {
-        if (context == null) {
-            throw new NullPointerException("Context cannot be null!");
-        }
 
-        if (client == null) {
-            throw new NullPointerException("Http client cannot be null!");
-        }
-
+    static void init(Context context) {
         if (instance == null) {
             synchronized (DownloadManager.class) {
                 if (instance == null) {
+                    if (context == null) {
+                        throw new NullPointerException("Context cannot be null!");
+                    }
+                    HttpLoggingInterceptor httpLoggingInterceptor = new HttpLoggingInterceptor();
+                    httpLoggingInterceptor.setLevel(Level.HEADERS);
+                    OkHttpClient client = new Builder().addInterceptor(httpLoggingInterceptor).build();
                     instance = new DownloadManager(client, context);
                 }
             }
         }
     }
 
-    public static void init(Context context) {
-        HttpLoggingInterceptor httpLoggingInterceptor = new HttpLoggingInterceptor();
-        httpLoggingInterceptor.setLevel(Level.HEADERS);
-        OkHttpClient client = new Builder().addInterceptor(httpLoggingInterceptor).build();
-        init(client, context);
-    }
-
-
-    public static DownloadManager instance() {
+    static DownloadManager instance() {
         if (instance == null) {
             throw new IllegalStateException("init download manager by DownloadManager.init(Context context) first!");
         }
         return instance;
     }
 
+    private void pauseAllInner() {
+        for (Long aLong : waitingTasksId) {
+            DownloadTask downloadTask = taskTable.get(aLong);
+            if (downloadTask != null) {
+                downloadTask.pause();
+            }
+        }
+
+        for (Long aLong : runningTasksId) {
+            DownloadTask downloadTask = taskTable.get(aLong);
+            if (downloadTask != null) {
+                downloadTask.pause();
+            }
+        }
+    }
+
+    private void startAllInner() {
+        int size = taskTable.size();
+        List<DownloadInfo> infoList = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            DownloadInfo downloadInfo = infoTable.valueAt(i);
+            if (downloadInfo != null) {
+                infoList.add(downloadInfo);
+            }
+        }
+        Collections.sort(infoList, (o1, o2) ->
+                o2.getCreatedTime().compareTo(o1.getCreatedTime()));
+        for (DownloadInfo downloadInfo : infoList) {
+            DownloadTask downloadTask = taskTable.get(downloadInfo.getId());
+            if (downloadTask != null) {
+                startOrResume(downloadInfo.getId());
+            }
+        }
+    }
+
     private void recoverDownloadTasks() {
         DownloadExecutors.io.execute(() -> {
-            DownloadInfoDao downloadInfoDao = daoSession.getDownloadInfoDao();
-            List<DownloadInfo> downloadInfoList = downloadInfoDao.loadAll();
+            List<DownloadInfo> downloadInfoList = queryActiveDownloadInfoListInner();
             if (!downloadInfoList.isEmpty()) {
                 DownloadExecutors.message.execute(() -> {
                     // make sure to add last
@@ -130,15 +155,8 @@ public class DownloadManager implements DownloadListener {
                             case PAUSED:
                                 pausingTasksId.add(id);
                                 break;
-                            case FINISH:
-                                finishedTasksId.add(id);
-                                break;
                             case WAITING:
                                 waitingList.add(id);
-                                break;
-                            case CANCELED:
-                                taskTable.remove(id);
-                                infoTable.remove(id);
                                 break;
                             case ERROR:
                             case FATAL_ERROR:
@@ -152,24 +170,12 @@ public class DownloadManager implements DownloadListener {
                             downloadTask.toWait();
                         }
                     }
-                    Log.d("DownloadManager", "recovered " + downloadInfoList.size() + " tasks!");
-                    recoverTasks = true;
-                    List<DownloadInfo> list = queryAllDownloadInfo();
-                    if (!downloadInfoList.isEmpty()) {
-                        for (WeakReference<RecoverListener> userRecoverListener : userRecoverListeners) {
-                            RecoverListener recoverListener = userRecoverListener.get();
-                            if (recoverListener != null) {
-                                DownloadExecutors.androidMain.execute(() -> recoverListener.recoverReady(list));
-                            }
-                            userRecoverListener.clear();
-                        }
-                    } else {
-                        for (WeakReference<RecoverListener> userRecoverListener : userRecoverListeners) {
-                            userRecoverListener.clear();
-                        }
-                    }
-                    userRecoverListeners.clear();
+                    Logger.d("DownloadManager", "recovered " + downloadInfoList.size() + " tasks!");
+                    daoSession.getDownloadInfoDao().saveInTx(downloadInfoList);
+                    recoverCountDownLatch.countDown();
                 });
+            } else {
+                recoverCountDownLatch.countDown();
             }
         });
     }
@@ -323,14 +329,9 @@ public class DownloadManager implements DownloadListener {
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
             if (runningTasksId.remove(id) | pausingTasksId.remove(id) |
-                    errorTasksId.remove(id) | finishedTasksId.remove(id) |
-                    waitingTasksId.remove(id)) {
+                    errorTasksId.remove(id) | waitingTasksId.remove(id)) {
                 taskTable.remove(id);
                 Log.d("DownloadManager", "remove task#" + id + " running tasks = " + runningTasksId.size());
-                for (Long aLong : runningTasksId) {
-                    DownloadInfo downloadInfo = infoTable.get(aLong);
-                    System.out.println(downloadInfo == null ? null : downloadInfo.getFilename());
-                }
                 DownloadExecutors.androidMain.execute(() -> {
                     if (userDownloadListener != null) {
                         DownloadListener downloadListener = userDownloadListener.get();
@@ -353,7 +354,6 @@ public class DownloadManager implements DownloadListener {
             if (!waitingTasksId.contains(id)) {
                 pausingTasksId.remove(id);
                 errorTasksId.remove(id);
-                finishedTasksId.remove(id);
                 waitingTasksId.add(id);
                 DownloadExecutors.androidMain.execute(() -> {
                     if (userDownloadListener != null) {
@@ -375,7 +375,6 @@ public class DownloadManager implements DownloadListener {
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
             if (runningTasksId.remove(id) | waitingTasksId.remove(id) | pausingTasksId.remove(id) | errorTasksId.remove(id)) {
-                finishedTasksId.add(id);
                 DownloadExecutors.androidMain.execute(() -> {
                     if (userDownloadListener != null) {
                         DownloadListener downloadListener = userDownloadListener.get();
@@ -423,8 +422,26 @@ public class DownloadManager implements DownloadListener {
     }
 
     /************************** api **************************/
+
+    @Override
+    public void pauseAll() {
+        DownloadExecutors.message.execute(this::pauseAllInner);
+    }
+
+    @Override
+    public void startAll() {
+        DownloadExecutors.message.execute(this::startAllInner);
+    }
+
+    public void end() {
+        DownloadExecutors.message.execute(() -> {
+            instance = null;
+            pauseAll();
+        });
+    }
+
     // include re-download
-    @MainThread
+    @Override
     public void startOrResume(long id) {
         DownloadExecutors.message.execute(() -> {
             DownloadTask downloadTask = taskTable.get(id);
@@ -432,13 +449,13 @@ public class DownloadManager implements DownloadListener {
                 return;
             }
 
-            if (pausingTasksId.remove(id) | errorTasksId.remove(id) | finishedTasksId.remove(id)) {
+            if (pausingTasksId.remove(id) | errorTasksId.remove(id)) {
                 downloadTask.toWait();
             }
         });
     }
 
-    @MainThread
+    @Override
     public void pause(long id) {
         DownloadExecutors.message.execute(() -> {
             DownloadTask downloadTask = taskTable.get(id);
@@ -448,7 +465,7 @@ public class DownloadManager implements DownloadListener {
     }
 
     // also delete
-    @MainThread
+    @Override
     public void cancel(long id) {
         DownloadExecutors.message.execute(() -> {
             DownloadTask downloadTask = taskTable.get(id);
@@ -465,8 +482,9 @@ public class DownloadManager implements DownloadListener {
      * @param customerHeaders customer header (`Range` will be removed)
      * @param listener        listener to inform submit success or fail
      */
-    @MainThread
+    @Override
     public void submit(String url, String path, String filename, Map<String, String> customerHeaders, SubmitListener listener) {
+        waitForRecovering();
         List<CustomerHeader> headers = new ArrayList<>();
         if (customerHeaders != null) {
             for (String s : customerHeaders.keySet()) {
@@ -508,8 +526,7 @@ public class DownloadManager implements DownloadListener {
         return sendMessageInterval;
     }
 
-    @MainThread
-    public void setUserDownloadListener(DownloadListener downloadListener) {
+    void setUserDownloadListener(DownloadListener downloadListener) {
         if (downloadListener == null) return;
         if (userDownloadListener != null) {
             userDownloadListener.clear();
@@ -517,19 +534,53 @@ public class DownloadManager implements DownloadListener {
         userDownloadListener = new WeakReference<>(downloadListener);
     }
 
-    @MainThread
-    public void addUserRecoverListener(RecoverListener recoverListener) {
-        if (recoverListener != null) {
-            if (recoverTasks) {
-                recoverListener.recoverReady(queryAllDownloadInfo());
-            } else {
-                userRecoverListeners.add(new WeakReference<>(recoverListener));
+    @Override
+    public DownloadInfo queryDownloadInfo(long id) {
+        return infoTable.get(id);
+    }
+
+    @Override
+    public List<DownloadInfo> queryFinishedDownloadInfoList() {
+        DownloadInfoDao downloadInfoDao = daoSession.getDownloadInfoDao();
+        return downloadInfoDao.queryBuilder()
+                .where(DownloadInfoDao.Properties.DownloadItemState.eq(FINISH))
+                .orderDesc(DownloadInfoDao.Properties.FinishedTime).build().list();
+    }
+
+    @Override
+    public List<DownloadInfo> queryActiveDownloadInfoList() {
+        waitForRecovering();
+        return queryActiveDownloadInfoListInner();
+    }
+
+    private void waitForRecovering() {
+        while (recoverCountDownLatch.getCount() > 0) {
+            try {
+                recoverCountDownLatch.await();
+            } catch (InterruptedException e) {
+                // do nothing
             }
         }
     }
 
-    public DownloadInfo queryDownloadInfo(long id) {
-        return infoTable.get(id);
+    private List<DownloadInfo> queryActiveDownloadInfoListInner() {
+        DownloadInfoDao downloadInfoDao = daoSession.getDownloadInfoDao();
+        return downloadInfoDao.queryBuilder()
+                .where(DownloadInfoDao.Properties.DownloadItemState.notEq(FINISH))
+                .where(DownloadInfoDao.Properties.DownloadItemState.notEq(CANCELED))
+                .orderDesc(DownloadInfoDao.Properties.CreatedTime)
+                .build()
+                .list();
+    }
+
+    @Override
+    public List<DownloadInfo> queryDeletedDownloadInfoList() {
+        DownloadInfoDao downloadInfoDao = daoSession.getDownloadInfoDao();
+        return downloadInfoDao.queryBuilder()
+                .where(DownloadInfoDao.Properties.DownloadItemState.eq(FINISH))
+                .orderDesc(DownloadInfoDao.Properties.CreatedTime)
+                .build()
+                .list();
     }
 
     private List<DownloadInfo> queryAllDownloadInfo() {
@@ -550,15 +601,5 @@ public class DownloadManager implements DownloadListener {
             }
         }
         return new ArrayList<>(queue);
-    }
-
-    public interface SubmitListener {
-        void submitSuccess(DownloadInfo downloadInfo);
-
-        void submitFail(Exception e);
-    }
-
-    public interface RecoverListener {
-        void recoverReady(List<DownloadInfo> recoveredTasks);
     }
 }

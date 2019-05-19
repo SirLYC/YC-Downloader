@@ -1,7 +1,8 @@
 package com.lyc.downloader.db;
 
+import android.os.Parcel;
+import android.os.Parcelable;
 import com.lyc.downloader.DownloadTask.DownloadState;
-
 import org.greenrobot.greendao.DaoException;
 import org.greenrobot.greendao.annotation.Entity;
 import org.greenrobot.greendao.annotation.Generated;
@@ -21,7 +22,7 @@ import java.util.List;
                 @org.greenrobot.greendao.annotation.Index(value = "url DESC")
         }
 )
-public class DownloadInfo implements Comparable<DownloadInfo> {
+public class DownloadInfo implements Comparable<DownloadInfo>, Parcelable {
     @Id(autoincrement = true)
     private Long id;
     @NotNull
@@ -59,10 +60,26 @@ public class DownloadInfo implements Comparable<DownloadInfo> {
     @Generated(hash = 1465593784)
     private transient DownloadInfoDao myDao;
 
+    public static final Creator<DownloadInfo> CREATOR = new Creator<DownloadInfo>() {
+        @Override
+        public DownloadInfo createFromParcel(Parcel in) {
+            return new DownloadInfo(in);
+        }
+
+        @Override
+        public DownloadInfo[] newArray(int size) {
+            return new DownloadInfo[size];
+        }
+    };
+
+    @Generated(hash = 327086747)
+    public DownloadInfo() {
+    }
+
     @Generated(hash = 9671916)
     public DownloadInfo(Long id, @NotNull String url, @NotNull String path, String filename,
-            boolean resumable, int downloadItemState, long downloadedSize, long totalSize,
-            String lastModified, Date createdTime, Date finishedTime, String errorMsg) {
+                        boolean resumable, int downloadItemState, long downloadedSize, long totalSize,
+                        String lastModified, Date createdTime, Date finishedTime, String errorMsg) {
         this.id = id;
         this.url = url;
         this.path = path;
@@ -75,10 +92,6 @@ public class DownloadInfo implements Comparable<DownloadInfo> {
         this.createdTime = createdTime;
         this.finishedTime = finishedTime;
         this.errorMsg = errorMsg;
-    }
-
-    @Generated(hash = 327086747)
-    public DownloadInfo() {
     }
 
     public Long getId() {
@@ -301,6 +314,51 @@ public class DownloadInfo implements Comparable<DownloadInfo> {
                 ", daoSession=" + daoSession +
                 ", myDao=" + myDao +
                 '}';
+    }
+
+    protected DownloadInfo(Parcel in) {
+        readFromParcel(in);
+    }
+
+    @Override
+    public int describeContents() {
+        return 0;
+    }
+
+    public void readFromParcel(Parcel in) {
+        if (in.readByte() == 0) {
+            id = null;
+        } else {
+            id = in.readLong();
+        }
+        url = in.readString();
+        path = in.readString();
+        filename = in.readString();
+        resumable = in.readByte() != 0;
+        downloadItemState = in.readInt();
+        downloadedSize = in.readLong();
+        totalSize = in.readLong();
+        lastModified = in.readString();
+        errorMsg = in.readString();
+    }
+
+    @Override
+    public void writeToParcel(Parcel dest, int flags) {
+        if (id == null) {
+            dest.writeByte((byte) 0);
+        } else {
+            dest.writeByte((byte) 1);
+            dest.writeLong(id);
+        }
+        dest.writeString(url);
+        dest.writeString(path);
+        dest.writeString(filename);
+        dest.writeByte((byte) (resumable ? 1 : 0));
+        dest.writeInt(downloadItemState);
+        dest.writeLong(downloadedSize);
+        dest.writeLong(totalSize);
+        dest.writeString(lastModified);
+        dest.writeString(errorMsg);
     }
 
     /** called by internal mechanisms, do not call yourself. */

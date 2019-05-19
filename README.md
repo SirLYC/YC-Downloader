@@ -13,7 +13,7 @@ Be cautious to use this library...
 - [x] multi download task
 - [x] support for HTTP (resume from break-point)
 - [x] message control to avoid ui frame drops 
-- [ ] multi-process support
+- [x] multi-process support
 - [ ] other protocol download maybe...
 
 ## Run
@@ -24,6 +24,66 @@ Be cautious to use this library...
 **`downloader` module**
     
     Download library.
+
+## Main API
+**install**
+```
+// it is recommended to install it in your Application
+public class App extends Application {
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        // multi process
+        YCDownloader.install(this, true);
+        // single process
+//        YCDownloader.install(this, false);
+        // or
+//        YCDownloader.install(this);
+    }
+}
+```
+
+**start download**
+```
+private SubmitListener submitListener = new SubmitListener() {
+        @Override
+        public void submitSuccess(DownloadInfo downloadInfo) {
+            Log.d("Submit", "success submit, id = " + downloadInfo.getId());
+        }
+
+        @Override
+        public void submitFail(Exception e) {
+            Log.e("Submit", "success failed", e);
+        }
+};
+// path: parent directory to store your file
+// filename: can be null; if not null, downloader will use it to save your file
+// customerHeaders: Map<String, String>
+YCDownloader.submit(url, path, filename, customerHeaders, submitListener);
+``` 
+
+**listen to download progress or state change**
+```
+DownloadListener downloadListener = ...;
+YCDownloader.register(downloadListener);
+
+// you should unregister it to avoid memory leak
+// such as Activity.OnDestroy
+YCDownloader.unregister(downloadListener);
+```
+
+**query download info**
+```
+// attention: these methods should be called in worker thread
+// query by id
+YCDownloader.queryDownloadInfo(long id);
+// state != CANCELED && state != FINISHED
+YCDownloader.queryActiveDownloadInfoList();
+// state == DELETED
+YCDownloader.queryDeletedDownloadInfoList();
+// state == FINISHED
+YCDownloader.queryFinishedDownloadInfoList();
+```
 
 ## Licence
 ```

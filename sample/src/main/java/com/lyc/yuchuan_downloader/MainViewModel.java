@@ -1,11 +1,11 @@
 package com.lyc.yuchuan_downloader;
 
-import androidx.annotation.MainThread;
 import androidx.collection.LongSparseArray;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 import com.lyc.downloader.DownloadListener;
-import com.lyc.downloader.DownloadManager;
+import com.lyc.downloader.SubmitListener;
+import com.lyc.downloader.YCDownloader;
 import com.lyc.downloader.db.DownloadInfo;
 
 import java.util.ArrayList;
@@ -18,12 +18,11 @@ import static com.lyc.downloader.DownloadTask.*;
  * @date 2019-04-23
  * @email kevinliu.sir@qq.com
  */
-public class MainViewModel extends ViewModel implements DownloadManager.SubmitListener, DownloadManager.RecoverListener, DownloadListener {
+public class MainViewModel extends ViewModel implements SubmitListener, DownloadListener {
     public final ObservableList<DownloadItem> itemList = new ObservableList<>(new ArrayList<>());
     final MutableLiveData<String> failLiveData = new MutableLiveData<>();
     private final LongSparseArray<DownloadItem> idToItem = new LongSparseArray<>();
     private String path;
-    private DownloadManager downloadManager;
 
     public String getPath() {
         return path;
@@ -31,14 +30,21 @@ public class MainViewModel extends ViewModel implements DownloadManager.SubmitLi
 
     public void setup(String path) {
         this.path = path;
-        downloadManager = DownloadManager.instance();
-        downloadManager.setUserDownloadListener(this);
-        downloadManager.addUserRecoverListener(this);
+        YCDownloader.registerDownloadListener(this);
+        Async.cache.execute(() -> {
+            List<DownloadInfo> downloadInfoList = YCDownloader.queryActiveDownloadInfoList();
+            Async.main.execute(() -> {
+                for (DownloadInfo downloadInfo : downloadInfoList) {
+                    DownloadItem item = downloadInfoToItem(downloadInfo);
+                    idToItem.put(downloadInfo.getId(), item);
+                    itemList.add(item);
+                }
+            });
+        });
     }
 
-    @MainThread
-    public void submit(String url) {
-        downloadManager.submit(url, path, null, null, this);
+    void submit(String url) {
+        YCDownloader.submit(url, path, null, null, this);
     }
 
     @Override
@@ -147,7 +153,7 @@ public class MainViewModel extends ViewModel implements DownloadManager.SubmitLi
     public void submitSuccess(DownloadInfo downloadInfo) {
         if (downloadInfo != null) {
             DownloadItem item = downloadInfoToItem(downloadInfo);
-            itemList.add(item);
+            itemList.add(0, item);
             idToItem.put(item.getId(), item);
         }
     }
@@ -157,17 +163,6 @@ public class MainViewModel extends ViewModel implements DownloadManager.SubmitLi
         e.printStackTrace();
         failLiveData.postValue(e.getMessage());
         failLiveData.postValue(null);
-    }
-
-    @Override
-    public void recoverReady(List<DownloadInfo> recoveredTasks) {
-        itemList.clear();
-        idToItem.clear();
-        for (DownloadInfo recoveredTask : recoveredTasks) {
-            DownloadItem item = downloadInfoToItem(recoveredTask);
-            itemList.add(item);
-            idToItem.put(recoveredTask.getId(), item);
-        }
     }
 
     private DownloadItem downloadInfoToItem(DownloadInfo info) {
@@ -186,21 +181,21 @@ public class MainViewModel extends ViewModel implements DownloadManager.SubmitLi
         );
     }
 
-    public void pause(long id) {
-        downloadManager.pause(id);
+    void pause(long id) {
+        YCDownloader.pause(id);
     }
 
-    public void start(long id) {
-        downloadManager.startOrResume(id);
+    void start(long id) {
+        YCDownloader.startOrResume(id);
     }
 
-    public void cancel(long id) {
-        downloadManager.cancel(id);
+    void cancel(long id) {
+        YCDownloader.cancel(id);
     }
 
     @Override
     protected void onCleared() {
-        downloadManager.setUserDownloadListener(null);
+        YCDownloader.unregisterDownloadListener(this);
         super.onCleared();
     }
 }

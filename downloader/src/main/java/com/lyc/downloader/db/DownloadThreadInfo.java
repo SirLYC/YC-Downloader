@@ -92,4 +92,6 @@ public class DownloadThreadInfo implements Comparable<DownloadThreadInfo> {
     public void setDownloadInfoId(long downloadInfoId) {
         this.downloadInfoId = downloadInfoId;
     }
+
+
 }

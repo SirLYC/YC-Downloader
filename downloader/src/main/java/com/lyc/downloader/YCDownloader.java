@@ -43,8 +43,8 @@ public abstract class YCDownloader {
         serviceManager.unregisterDownloadListener(downloadListener);
     }
 
-    public static void startOrResume(long id) {
-        serviceManager.startOrResume(id);
+    public static void startOrResume(long id, boolean restart) {
+        serviceManager.startOrResume(id, restart);
     }
 
     public static void pause(long id) {
@@ -65,6 +65,10 @@ public abstract class YCDownloader {
 
     public static void submit(String url, String path, String filename, Map<String, String> customerHeaders, SubmitListener listener) {
         serviceManager.submit(url, path, filename, customerHeaders, listener);
+    }
+
+    public static void delete(long id, boolean deleteFile) {
+        serviceManager.delete(id, deleteFile);
     }
 
     public static DownloadInfo queryDownloadInfo(long id) {

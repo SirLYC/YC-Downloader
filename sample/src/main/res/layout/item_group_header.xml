@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools"
+          tools:text="正在下载"
+          android:id="@+id/tv_group"
+          android:background="#f0f0f0"
+          android:textColor="#666666"
+          android:paddingStart="16dp"
+          android:paddingEnd="16dp"
+          android:paddingTop="8dp"
+          android:paddingBottom="8dp"
+          android:textSize="14sp"
+          android:gravity="center_vertical"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"/>

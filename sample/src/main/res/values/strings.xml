@@ -3,4 +3,8 @@
     <string name="download">新建任务</string>
     <string name="delete">删除</string>
     <string name="delete_file">删除文件</string>
+    <string name="delete_downloaded_file">同时删除已下载文件</string>
+    <string name="delete_download_assure">是否要删除下载？</string>
+    <string name="yes">是</string>
+    <string name="no">否</string>
 </resources>

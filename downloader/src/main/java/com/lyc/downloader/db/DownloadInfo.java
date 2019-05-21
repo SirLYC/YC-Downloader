@@ -367,4 +367,6 @@ public class DownloadInfo implements Comparable<DownloadInfo>, Parcelable {
         this.daoSession = daoSession;
         myDao = daoSession != null ? daoSession.getDownloadInfoDao() : null;
     }
+
+
 }

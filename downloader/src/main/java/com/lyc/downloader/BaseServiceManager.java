@@ -83,11 +83,11 @@ public abstract class BaseServiceManager implements DownloadController, Download
     }
 
     @Override
-    public void startOrResume(long id) {
+    public void startOrResume(long id, boolean restart) {
         DownloadExecutors.io.execute(() -> {
             try {
                 waitingForConnection();
-                downloadService.startOrResume(id);
+                downloadService.startOrResume(id, restart);
             } catch (RemoteException e) {
                 Logger.e("DownloadController", "cannot startOrResume", e);
             }
@@ -128,6 +128,18 @@ public abstract class BaseServiceManager implements DownloadController, Download
                 Logger.e("DownloadController", "cannot pauseAll", e);
             }
 
+        });
+    }
+
+    @Override
+    public void delete(long id, boolean deleteFile) {
+        DownloadExecutors.io.execute(() -> {
+            waitingForConnection();
+            try {
+                downloadService.delete(id, deleteFile);
+            } catch (RemoteException e) {
+                Logger.e("DownloadController", "cannot delete", e);
+            }
         });
     }
 
@@ -205,11 +217,11 @@ public abstract class BaseServiceManager implements DownloadController, Download
         }
     }
 
-    public void registerDownloadListener(DownloadListener downloadListener) {
+    void registerDownloadListener(DownloadListener downloadListener) {
         downloadListenerDispatcher.registerDownloadListener(downloadListener);
     }
 
-    public void unregisterDownloadListener(DownloadListener downloadListener) {
+    void unregisterDownloadListener(DownloadListener downloadListener) {
         downloadListenerDispatcher.unregisterDownloadListener(downloadListener);
     }
 }

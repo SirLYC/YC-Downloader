@@ -252,8 +252,8 @@ public class LocalDownloadService extends Service implements DownloadListener {
         }
 
         @Override
-        public void startOrResume(long id) {
-            downloadManager.startOrResume(id);
+        public void startOrResume(long id, boolean restart) {
+            downloadManager.startOrResume(id, restart);
         }
 
         @Override
@@ -264,6 +264,11 @@ public class LocalDownloadService extends Service implements DownloadListener {
         @Override
         public void cancel(long id) {
             downloadManager.cancel(id);
+        }
+
+        @Override
+        public void delete(long id, boolean deleteFile) {
+            downloadManager.delete(id, deleteFile);
         }
 
         @Override

@@ -25,9 +25,11 @@ interface IDownloadService {
 
     void pauseAll();
 
-    void startOrResume(long id);
+    void startOrResume(long id, boolean restart);
 
     void pause(long id);
 
     void cancel(long id);
+
+    void delete(long id, boolean deleteFile);
 }

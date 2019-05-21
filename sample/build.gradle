@@ -1,4 +1,6 @@
 apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android-extensions'
+apply plugin: 'kotlin-android'
 
 android {
     compileSdkVersion buildInfo['compileSdkVersion']
@@ -31,10 +33,15 @@ dependencies {
     implementation deps['constraintlayout']
     implementation deps['lifecycle-extensions']
     implementation deps['recyclerview']
-    compileOnly deps['lombok']
-    annotationProcessor deps['lombok']
+    implementation deps['core-ktx']
+    implementation deps['multi-type']
+    implementation deps['lifecycle-ktx']
+    implementation deps['kotlin-stdlib']
 
     testImplementation deps['junit']
     androidTestImplementation deps['runner']
     androidTestImplementation deps['epresso']
+}
+repositories {
+    mavenCentral()
 }

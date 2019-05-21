@@ -95,8 +95,8 @@ public class RemoteDownloadService extends Service implements DownloadListener {
         }
 
         @Override
-        public void startOrResume(long id) {
-            downloadManager.startOrResume(id);
+        public void startOrResume(long id, boolean restart) {
+            downloadManager.startOrResume(id, restart);
         }
 
         @Override
@@ -107,6 +107,11 @@ public class RemoteDownloadService extends Service implements DownloadListener {
         @Override
         public void cancel(long id) {
             downloadManager.cancel(id);
+        }
+
+        @Override
+        public void delete(long id, boolean deleteFile) {
+            downloadManager.delete(id, deleteFile);
         }
     };
 
@@ -256,7 +261,7 @@ public class RemoteDownloadService extends Service implements DownloadListener {
         for (int i = 0; i < n; i++) {
             IDownloadCallback broadcastItem = downloadCallbackList.getBroadcastItem(i);
             try {
-                broadcastItem.onUpdateInfo(downloadInfo);
+                broadcastItem.onDownloadFinished(downloadInfo);
             } catch (RemoteException e) {
                 Logger.e(TAG, "send downloadFinished event for task#" + downloadInfo.getId() + " failed.", e);
             }

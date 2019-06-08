@@ -7,12 +7,8 @@ import android.util.Log;
 import androidx.annotation.MainThread;
 import androidx.annotation.WorkerThread;
 import androidx.collection.LongSparseArray;
-import com.lyc.downloader.db.CustomerHeader;
-import com.lyc.downloader.db.DaoMaster;
+import com.lyc.downloader.db.*;
 import com.lyc.downloader.db.DaoMaster.DevOpenHelper;
-import com.lyc.downloader.db.DaoSession;
-import com.lyc.downloader.db.DownloadInfo;
-import com.lyc.downloader.db.DownloadInfoDao;
 import com.lyc.downloader.utils.Logger;
 import com.lyc.downloader.utils.UniqueDequeue;
 import okhttp3.OkHttpClient;
@@ -21,13 +17,7 @@ import okhttp3.logging.HttpLoggingInterceptor;
 import okhttp3.logging.HttpLoggingInterceptor.Level;
 
 import java.lang.ref.WeakReference;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.Deque;
-import java.util.List;
-import java.util.Map;
-import java.util.PriorityQueue;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -46,8 +36,6 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     // for http
     private final OkHttpClient client;
     final DaoSession daoSession;
-    // TODO: 2019/4/26 register network change BroadReceiver
-    private final Context appContext;
     private final LongSparseArray<DownloadTask> taskTable = new LongSparseArray<>();
     private final LongSparseArray<DownloadInfo> infoTable = new LongSparseArray<>();
     private final LongSparseArray<Long> lastSendMessageTime = new LongSparseArray<>();
@@ -66,7 +54,6 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
 
     private DownloadManager(OkHttpClient client, Context appContext) {
         this.client = client;
-        this.appContext = appContext;
         DownloadExecutors.init();
         SQLiteDatabase db = new DevOpenHelper(appContext, DB_NAME).getWritableDatabase();
         daoSession = new DaoMaster(db).newSession();
@@ -613,25 +600,5 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                 .orderDesc(DownloadInfoDao.Properties.CreatedTime)
                 .build()
                 .list();
-    }
-
-    private List<DownloadInfo> queryAllDownloadInfo() {
-        LongSparseArray<DownloadInfo> infoTable;
-
-        if (DownloadExecutors.isMessageThread()) {
-            infoTable = this.infoTable;
-        } else {
-            infoTable = this.infoTable.clone();
-        }
-
-        int size = infoTable.size();
-        PriorityQueue<DownloadInfo> queue = new PriorityQueue<>();
-        for (int i = 0; i < size; i++) {
-            DownloadInfo downloadInfo = infoTable.valueAt(i);
-            if (downloadInfo.getDownloadItemState() != CANCELED) {
-                queue.offer(downloadInfo);
-            }
-        }
-        return new ArrayList<>(queue);
     }
 }

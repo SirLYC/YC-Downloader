@@ -6,6 +6,7 @@ import com.lyc.downloader.db.DownloadInfo;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * @author liuyuchuan
@@ -36,11 +37,27 @@ public abstract class YCDownloader {
     }
 
     public static void registerDownloadListener(DownloadListener downloadListener) {
-        serviceManager.registerDownloadListener(downloadListener);
+        serviceManager.registerDownloadListener((Long) null, downloadListener);
+    }
+
+    public static void registerDownloadListener(long id, DownloadListener downloadListener) {
+        serviceManager.registerDownloadListener(id, downloadListener);
+    }
+
+    public static void registerDownloadListener(Set<Long> ids, DownloadListener downloadListener) {
+        serviceManager.registerDownloadListener(ids, downloadListener);
     }
 
     public static void unregisterDownloadListener(DownloadListener downloadListener) {
         serviceManager.unregisterDownloadListener(downloadListener);
+    }
+
+    public static void unregisterDownloadListener(long id, DownloadListener downloadListener) {
+        serviceManager.unregisterDownloadListener(id, downloadListener);
+    }
+
+    public static void unregisterDownloadListener(Set<Long> ids, DownloadListener downloadListener) {
+        serviceManager.unregisterDownloadListener(ids, downloadListener);
     }
 
     public static void startOrResume(long id, boolean restart) {

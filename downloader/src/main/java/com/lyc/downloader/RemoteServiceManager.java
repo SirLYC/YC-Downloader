@@ -16,7 +16,7 @@ import java.util.concurrent.CountDownLatch;
 class RemoteServiceManager extends BaseServiceManager {
     private boolean inServerProcess;
 
-    public RemoteServiceManager(Context context) {
+    RemoteServiceManager(Context context) {
         super(context);
     }
 

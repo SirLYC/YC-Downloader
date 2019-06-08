@@ -11,6 +11,7 @@ import com.lyc.downloader.utils.Logger;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
@@ -217,8 +218,26 @@ public abstract class BaseServiceManager implements DownloadController, Download
         }
     }
 
-    void registerDownloadListener(DownloadListener downloadListener) {
-        downloadListenerDispatcher.registerDownloadListener(downloadListener);
+    void registerDownloadListener(Long id, DownloadListener downloadListener) {
+        downloadListenerDispatcher.registerDownloadListener(id, downloadListener);
+    }
+
+    void registerDownloadListener(Set<Long> ids, DownloadListener downloadListener) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        downloadListenerDispatcher.registerDownloadListener(ids, downloadListener);
+    }
+
+    void unregisterDownloadListener(Long id, DownloadListener downloadListener) {
+        downloadListenerDispatcher.unregisterDownloadListener(id, downloadListener);
+    }
+
+    void unregisterDownloadListener(Set<Long> ids, DownloadListener downloadListener) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        downloadListenerDispatcher.unregisterDownloadListener(ids, downloadListener);
     }
 
     void unregisterDownloadListener(DownloadListener downloadListener) {

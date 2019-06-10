@@ -8,26 +8,13 @@ import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.db.DownloadThreadInfo;
 import com.lyc.downloader.utils.DownloadStringUtil;
 import com.lyc.downloader.utils.Logger;
-import okhttp3.Call;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
+import okhttp3.*;
 import okhttp3.Request.Builder;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -440,7 +427,7 @@ public class DownloadTask {
                 }
                 return true;
             }
-            return state == PAUSED;
+            return state == PAUSED || state == WAITING;
         } finally {
             stateLock.unlock();
         }
@@ -495,6 +482,28 @@ public class DownloadTask {
                 } finally {
                     runLock.unlock();
                 }
+            } else if (state == RUNNING || state == PREPARING) {
+                this.restart = false;
+                state = WAITING;
+                stateChange();
+                if (pivotCall != null) {
+                    pivotCall.cancel();
+                }
+                if (downloadRunnables != null) {
+                    for (DownloadRunnable downloadRunnable : downloadRunnables) {
+                        downloadRunnable.cancelRequest();
+                    }
+
+                    Iterator<Thread> iterator = threads.iterator();
+                    while (iterator.hasNext()) {
+                        Thread t = iterator.next();
+                        if (!t.isInterrupted()) {
+                            t.interrupt();
+                        }
+                        iterator.remove();
+                    }
+                }
+                downloadListener.onDownloadTaskWait(downloadInfo.getId());
             }
         } finally {
             stateLock.unlock();
@@ -726,7 +735,7 @@ public class DownloadTask {
         }
         try {
             stateLock.lock();
-            if (state == ERROR || state == FATAL_ERROR) {
+            if (state == ERROR || state == FATAL_ERROR || state != PREPARING || state != RUNNING) {
                 return;
             }
 
@@ -952,7 +961,7 @@ public class DownloadTask {
                 } catch (IOException e) {
                     try {
                         stateLock.lock();
-                        if (state != PAUSING && state != PAUSED && state != CANCELED && retryCount-- <= 0) {
+                        if (state != PAUSING && state != PAUSED && state != CANCELED && state != WAITING && retryCount-- <= 0) {
                             reportError(DownloadError.ERROR_NETWORK);
                             if (BuildConfig.DEBUG) {
                                 e.printStackTrace();
@@ -1054,7 +1063,7 @@ public class DownloadTask {
                     } catch (IOException e) {
                         try {
                             stateLock.lock();
-                            if (state != PAUSING && state != PAUSED && state != CANCELED && retryCount-- <= 0) {
+                            if (state != PAUSING && state != PAUSED && state != CANCELED && state != WAITING && retryCount-- <= 0) {
                                 reportError(DownloadError.ERROR_DOWNLOAD_FAIL);
                                 if (BuildConfig.DEBUG) {
                                     e.printStackTrace();

@@ -21,6 +21,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * Created by Liu Yuchuan on 2019/5/19.
  */
 public abstract class BaseServiceManager implements DownloadController, DownloadInfoProvider {
+    private static final int MAX_SUPPORT_TASK_COUNT = Runtime.getRuntime().availableProcessors() * 2 + 1;
     private static final long WAITING_TIME = TimeUnit.SECONDS.toNanos(6);
     final Context appContext;
     final Lock connectLock = new ReentrantLock();
@@ -176,6 +177,79 @@ public abstract class BaseServiceManager implements DownloadController, Download
                 DownloadExecutors.androidMain.execute(() -> listener.submitFail(e));
             }
         });
+    }
+
+    @Override
+    public int getMaxSupportTaskCount() {
+        return MAX_SUPPORT_TASK_COUNT;
+    }
+
+    @Override
+    public int getMaxRunningTask() {
+        try {
+            return downloadService.getMaxRunningTask();
+        } catch (RemoteException e) {
+            Logger.e(getClass().getSimpleName(), "cannot get maxRunning task", e);
+        }
+
+        return 0;
+    }
+
+    @Override
+    public void setMaxRunningTask(int count) {
+        if (count <= 0) return;
+        DownloadExecutors.io.execute(() -> {
+            waitingForConnection();
+            try {
+                if (count > MAX_SUPPORT_TASK_COUNT) {
+                    downloadService.setMaxRunningTask(MAX_SUPPORT_TASK_COUNT);
+                } else {
+                    downloadService.setMaxRunningTask(count);
+                }
+            } catch (RemoteException e) {
+                Logger.e(getClass().getSimpleName(), "cannot set max task count", e);
+            }
+        });
+    }
+
+    @Override
+    public boolean isAvoidFrameDrop() {
+        try {
+            return downloadService.isAvoidFrameDrop();
+        } catch (RemoteException e) {
+            Logger.e(getClass().getSimpleName(), "cannot get avoid frame drop", e);
+        }
+
+        return false;
+    }
+
+    @Override
+    public void setAvoidFrameDrop(boolean avoidFrameDrop) {
+        try {
+            downloadService.setAvoidFrameDrop(avoidFrameDrop);
+        } catch (RemoteException e) {
+            Logger.e(getClass().getSimpleName(), "cannot set avoid frame drop", e);
+        }
+    }
+
+    @Override
+    public long getSendMessageIntervalNanos() {
+        try {
+            return downloadService.getSendMessageIntervalNanos();
+        } catch (RemoteException e) {
+            Logger.e(getClass().getSimpleName(), "cannot get send message interval nanos", e);
+        }
+
+        return 0;
+    }
+
+    @Override
+    public void setSendMessageIntervalNanos(long time) {
+        try {
+            downloadService.setSendMessageIntervalNanos(time);
+        } catch (RemoteException e) {
+            Logger.e(getClass().getSimpleName(), "cannot set send message interval nanos", e);
+        }
     }
 
     @Override

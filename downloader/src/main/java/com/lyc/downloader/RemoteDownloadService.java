@@ -113,6 +113,36 @@ public class RemoteDownloadService extends Service implements DownloadListener {
         public void delete(long id, boolean deleteFile) {
             downloadManager.delete(id, deleteFile);
         }
+
+        @Override
+        public int getMaxRunningTask() {
+            return downloadManager.getMaxRunningTask();
+        }
+
+        @Override
+        public void setMaxRunningTask(int count) {
+            downloadManager.setMaxRunningTask(count);
+        }
+
+        @Override
+        public boolean isAvoidFrameDrop() {
+            return downloadManager.isAvoidFrameDrop();
+        }
+
+        @Override
+        public void setAvoidFrameDrop(boolean avoidFrameDrop) {
+            downloadManager.setAvoidFrameDrop(avoidFrameDrop);
+        }
+
+        @Override
+        public long getSendMessageIntervalNanos() {
+            return downloadManager.getSendMessageIntervalNanos();
+        }
+
+        @Override
+        public void setSendMessageIntervalNanos(long time) {
+            downloadManager.setSendMessageIntervalNanos(time);
+        }
     };
 
     @Override

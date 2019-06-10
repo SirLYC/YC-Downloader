@@ -4,7 +4,6 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
 import android.util.Log;
-import androidx.annotation.MainThread;
 import androidx.annotation.WorkerThread;
 import androidx.collection.LongSparseArray;
 import com.lyc.downloader.db.*;
@@ -47,10 +46,12 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     private WeakReference<DownloadListener> userDownloadListener;
     private int maxRunningTask = 4;
     private volatile boolean avoidFrameDrop = true;
-    // ns
-    private volatile long sendMessageInterval = TimeUnit.MILLISECONDS.toNanos(500);
+    // io task
+    private static final int MAX_SUPPORT_TASK_COUNT = Runtime.getRuntime().availableProcessors() * 2 + 1;
 
     private CountDownLatch recoverCountDownLatch = new CountDownLatch(1);
+    // ns
+    private volatile long sendMessageIntervalNanos = TimeUnit.MILLISECONDS.toNanos(333);
 
     private DownloadManager(OkHttpClient client, Context appContext) {
         this.client = client;
@@ -178,6 +179,19 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
         if (!DownloadExecutors.isMessageThread()) {
             throw new IllegalStateException("cannot schedule outside DownloadExecutors#messageThread");
         }
+
+
+        while (runningTasksId.size() > maxRunningTask) {
+            Long id = runningTasksId.pollLast();
+            DownloadTask downloadTask = taskTable.get(id);
+            if (downloadTask == null) {
+                taskTable.remove(id);
+                infoTable.remove(id);
+                continue;
+            }
+            downloadTask.toWait(false);
+        }
+
         while (runningTasksId.size() < maxRunningTask && !waitingTasksId.isEmpty()) {
             Long id = waitingTasksId.pollFirst();
             DownloadTask downloadTask = taskTable.get(id);
@@ -211,7 +225,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
             long currentTime = System.nanoTime();
             if (avoidFrameDrop) {
                 Long lastTime = lastSendMessageTime.get(id);
-                if (lastTime == null || lastTime + sendMessageInterval <= currentTime) {
+                if (lastTime == null || lastTime + sendMessageIntervalNanos <= currentTime) {
                     shouldSend = true;
                 }
             } else {
@@ -518,15 +532,25 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
         });
     }
 
-    @MainThread
+    @Override
     public int getMaxRunningTask() {
         return maxRunningTask;
     }
 
-    @MainThread
-    public void setMaxRunningTask(int maxRunningTask) {
-        if (maxRunningTask <= 0) maxRunningTask = 1;
-        this.maxRunningTask = maxRunningTask;
+    @Override
+    public void setMaxRunningTask(int count) {
+        if (count <= 0) throw new IllegalArgumentException("max task count cannot <= 0");
+        if (maxRunningTask != count) {
+            DownloadExecutors.message.execute(() -> {
+                maxRunningTask = count;
+                schedule();
+            });
+        }
+    }
+
+    @Override
+    public int getMaxSupportTaskCount() {
+        return MAX_SUPPORT_TASK_COUNT;
     }
 
     public boolean isAvoidFrameDrop() {
@@ -534,15 +558,22 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     }
 
     public void setAvoidFrameDrop(boolean avoidFrameDrop) {
-        this.avoidFrameDrop = avoidFrameDrop;
+        if (this.avoidFrameDrop != avoidFrameDrop) {
+            DownloadExecutors.io.execute(() -> {
+                this.avoidFrameDrop = avoidFrameDrop;
+                if (!this.avoidFrameDrop) {
+                    lastSendMessageTime.clear();
+                }
+            });
+        }
     }
 
-    public void setSendMessageInterval(long time, TimeUnit timeUnit) {
-        this.sendMessageInterval = timeUnit.toNanos(time);
+    public long getSendMessageIntervalNanos() {
+        return sendMessageIntervalNanos;
     }
 
-    public long getSendMessageInterval() {
-        return sendMessageInterval;
+    public void setSendMessageIntervalNanos(long time) {
+        this.sendMessageIntervalNanos = time;
     }
 
     void setUserDownloadListener(DownloadListener downloadListener) {

@@ -32,4 +32,17 @@ interface IDownloadService {
     void cancel(long id);
 
     void delete(long id, boolean deleteFile);
+
+    void setMaxRunningTask(int count);
+
+    int getMaxRunningTask();
+
+    void setAvoidFrameDrop(boolean avoidFrameDrop);
+
+    boolean isAvoidFrameDrop();
+
+    // time unit: ms
+    void setSendMessageIntervalNanos(long time);
+
+    long getSendMessageIntervalNanos();
 }

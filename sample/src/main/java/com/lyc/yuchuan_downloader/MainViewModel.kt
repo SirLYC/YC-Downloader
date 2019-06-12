@@ -27,6 +27,7 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
         private set
     private val downloading = "正在下载"
     private val finished = "已完成"
+    private var setup = false
 
     private val downloadObservableListCallback = object : ListUpdateCallback {
         override fun onInserted(position: Int, count: Int) {
@@ -126,6 +127,10 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
     }
 
     fun setup(path: String) {
+        if (setup) {
+            return
+        }
+        setup = true
         this.path = path
         downloadItemObservableList.addCallback(downloadObservableListCallback)
         finishedItemList.addCallback(finishedObservableListCallback)

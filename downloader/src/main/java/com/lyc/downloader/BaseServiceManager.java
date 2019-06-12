@@ -4,6 +4,7 @@ import android.app.ActivityManager;
 import android.content.Context;
 import android.content.ServiceConnection;
 import android.os.IBinder.DeathRecipient;
+import android.os.Looper;
 import android.os.RemoteException;
 import com.lyc.downloader.ISubmitCallback.Stub;
 import com.lyc.downloader.db.DownloadInfo;
@@ -14,8 +15,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Created by Liu Yuchuan on 2019/5/19.
@@ -24,31 +23,27 @@ public abstract class BaseServiceManager implements DownloadController, Download
     private static final int MAX_SUPPORT_TASK_COUNT = Runtime.getRuntime().availableProcessors() * 2 + 1;
     private static final long WAITING_TIME = TimeUnit.SECONDS.toNanos(6);
     final Context appContext;
-    final Lock connectLock = new ReentrantLock();
     final DownloadListenerDispatcher downloadListenerDispatcher = new DownloadListenerDispatcher();
     IDownloadService downloadService;
-    CountDownLatch countDownLatch;
+    final CountDownLatch countDownLatch = new CountDownLatch(1);
     ServiceConnection downloadServiceConnection;
     DeathRecipient deathRecipient = new DeathRecipient() {
         @Override
         public void binderDied() {
-            try {
-                connectLock.lock();
-                if (downloadService != null) {
-                    downloadService.asBinder().unlinkToDeath(deathRecipient, 0);
-                }
-                downloadService = null;
-            } finally {
-                connectLock.unlock();
+            Logger.e("BaseServiceManager", "Binder died...try to restart");
+            if (downloadService != null) {
+                downloadService.asBinder().unlinkToDeath(deathRecipient, 0);
             }
+            downloadService = null;
             connectToService();
         }
     };
 
     BaseServiceManager(Context appContext) {
+        DownloadExecutors.init();
         this.appContext = appContext.getApplicationContext();
         initServiceConnection();
-        DownloadExecutors.io.execute(this::connectToService);
+        connectToService();
     }
 
     static String getProcessName(Context applicationContext) {
@@ -68,7 +63,6 @@ public abstract class BaseServiceManager implements DownloadController, Download
     abstract void initServiceConnection();
 
     private void waitingForConnection() {
-        CountDownLatch countDownLatch = this.countDownLatch;
         long start;
         long waited = 0;
         while (countDownLatch.getCount() > 0 && waited < WAITING_TIME) {
@@ -86,7 +80,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     @Override
     public void startOrResume(long id, boolean restart) {
-        DownloadExecutors.io.execute(() -> {
+        DownloadExecutors.command.execute(() -> {
             try {
                 waitingForConnection();
                 downloadService.startOrResume(id, restart);
@@ -98,7 +92,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     @Override
     public void pause(long id) {
-        DownloadExecutors.io.execute(() -> {
+        DownloadExecutors.command.execute(() -> {
             try {
                 waitingForConnection();
                 downloadService.pause(id);
@@ -110,7 +104,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     @Override
     public void startAll() {
-        DownloadExecutors.io.execute(() -> {
+        DownloadExecutors.command.execute(() -> {
             try {
                 waitingForConnection();
                 downloadService.startAll();
@@ -122,7 +116,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     @Override
     public void pauseAll() {
-        DownloadExecutors.io.execute(() -> {
+        DownloadExecutors.command.execute(() -> {
             try {
                 waitingForConnection();
                 downloadService.pauseAll();
@@ -135,7 +129,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     @Override
     public void delete(long id, boolean deleteFile) {
-        DownloadExecutors.io.execute(() -> {
+        DownloadExecutors.command.execute(() -> {
             waitingForConnection();
             try {
                 downloadService.delete(id, deleteFile);
@@ -147,7 +141,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     @Override
     public void cancel(long id) {
-        DownloadExecutors.io.execute(() -> {
+        DownloadExecutors.command.execute(() -> {
             waitingForConnection();
             try {
                 downloadService.cancel(id);
@@ -159,7 +153,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     @Override
     public void submit(String url, String path, String filename, Map<String, String> customerHeaders, SubmitListener listener) {
-        DownloadExecutors.io.execute(() -> {
+        DownloadExecutors.command.execute(() -> {
             waitingForConnection();
             try {
                 downloadService.submit(url, path, filename, customerHeaders, new Stub() {
@@ -180,12 +174,15 @@ public abstract class BaseServiceManager implements DownloadController, Download
     }
 
     @Override
-    public int getMaxSupportTaskCount() {
+    public int getMaxSupportRunningTask() {
         return MAX_SUPPORT_TASK_COUNT;
     }
 
     @Override
     public int getMaxRunningTask() {
+        if (downloadService == null) {
+            return 0;
+        }
         try {
             return downloadService.getMaxRunningTask();
         } catch (RemoteException e) {
@@ -198,7 +195,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
     @Override
     public void setMaxRunningTask(int count) {
         if (count <= 0) return;
-        DownloadExecutors.io.execute(() -> {
+        DownloadExecutors.command.execute(() -> {
             waitingForConnection();
             try {
                 if (count > MAX_SUPPORT_TASK_COUNT) {
@@ -214,6 +211,9 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     @Override
     public boolean isAvoidFrameDrop() {
+        if (downloadService == null) {
+            return false;
+        }
         try {
             return downloadService.isAvoidFrameDrop();
         } catch (RemoteException e) {
@@ -225,15 +225,21 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     @Override
     public void setAvoidFrameDrop(boolean avoidFrameDrop) {
-        try {
-            downloadService.setAvoidFrameDrop(avoidFrameDrop);
-        } catch (RemoteException e) {
-            Logger.e(getClass().getSimpleName(), "cannot set avoid frame drop", e);
-        }
+        DownloadExecutors.command.execute(() -> {
+            waitingForConnection();
+            try {
+                downloadService.setAvoidFrameDrop(avoidFrameDrop);
+            } catch (RemoteException e) {
+                Logger.e(getClass().getSimpleName(), "cannot set avoid frame drop", e);
+            }
+        });
     }
 
     @Override
     public long getSendMessageIntervalNanos() {
+        if (downloadService == null) {
+            return 0;
+        }
         try {
             return downloadService.getSendMessageIntervalNanos();
         } catch (RemoteException e) {
@@ -245,15 +251,21 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     @Override
     public void setSendMessageIntervalNanos(long time) {
-        try {
-            downloadService.setSendMessageIntervalNanos(time);
-        } catch (RemoteException e) {
-            Logger.e(getClass().getSimpleName(), "cannot set send message interval nanos", e);
-        }
+        DownloadExecutors.command.execute(() -> {
+            waitingForConnection();
+            try {
+                downloadService.setSendMessageIntervalNanos(time);
+            } catch (RemoteException e) {
+                Logger.e(getClass().getSimpleName(), "cannot set send message interval nanos", e);
+            }
+        });
     }
 
     @Override
     public DownloadInfo queryDownloadInfo(long id) {
+        if (Thread.currentThread() == Looper.getMainLooper().getThread()) {
+            throw new IllegalThreadStateException("this method cannot call in main thread");
+        }
         waitingForConnection();
         try {
             return downloadService.queryDownloadInfo(id);
@@ -264,6 +276,9 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     @Override
     public List<DownloadInfo> queryActiveDownloadInfoList() {
+        if (Thread.currentThread() == Looper.getMainLooper().getThread()) {
+            throw new IllegalThreadStateException("this method cannot call in main thread");
+        }
         waitingForConnection();
         try {
             return downloadService.queryActiveDownloadInfoList();
@@ -274,6 +289,9 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     @Override
     public List<DownloadInfo> queryDeletedDownloadInfoList() {
+        if (Thread.currentThread() == Looper.getMainLooper().getThread()) {
+            throw new IllegalThreadStateException("this method cannot call in main thread");
+        }
         waitingForConnection();
         try {
             return downloadService.queryDeletedDownloadInfoList();
@@ -284,6 +302,9 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     @Override
     public List<DownloadInfo> queryFinishedDownloadInfoList() {
+        if (Thread.currentThread() == Looper.getMainLooper().getThread()) {
+            throw new IllegalThreadStateException("this method cannot call in main thread");
+        }
         waitingForConnection();
         try {
             return downloadService.queryFinishedDownloadInfoList();
@@ -293,28 +314,63 @@ public abstract class BaseServiceManager implements DownloadController, Download
     }
 
     void registerDownloadListener(Long id, DownloadListener downloadListener) {
-        downloadListenerDispatcher.registerDownloadListener(id, downloadListener);
+        if (downloadListener != null) {
+            DownloadExecutors.command.execute(() -> {
+                waitingForConnection();
+                downloadListenerDispatcher.registerDownloadListener(id, downloadListener);
+            });
+        }
     }
 
     void registerDownloadListener(Set<Long> ids, DownloadListener downloadListener) {
         if (ids == null || ids.isEmpty()) {
             return;
         }
-        downloadListenerDispatcher.registerDownloadListener(ids, downloadListener);
+
+        if (downloadListener != null) {
+            DownloadExecutors.command.execute(() -> {
+                waitingForConnection();
+                downloadListenerDispatcher.registerDownloadListener(ids, downloadListener);
+            });
+        }
     }
 
     void unregisterDownloadListener(Long id, DownloadListener downloadListener) {
-        downloadListenerDispatcher.unregisterDownloadListener(id, downloadListener);
+        if (downloadListener != null) {
+            DownloadExecutors.command.execute(() -> {
+                waitingForConnection();
+                downloadListenerDispatcher.unregisterDownloadListener(id, downloadListener);
+            });
+        }
     }
 
     void unregisterDownloadListener(Set<Long> ids, DownloadListener downloadListener) {
         if (ids == null || ids.isEmpty()) {
             return;
         }
-        downloadListenerDispatcher.unregisterDownloadListener(ids, downloadListener);
+
+        if (downloadListener != null) {
+            DownloadExecutors.command.execute(() -> {
+                waitingForConnection();
+                downloadListenerDispatcher.unregisterDownloadListener(ids, downloadListener);
+            });
+        }
     }
 
     void unregisterDownloadListener(DownloadListener downloadListener) {
-        downloadListenerDispatcher.unregisterDownloadListener(downloadListener);
+        if (downloadListener != null) {
+            DownloadExecutors.command.execute(() -> {
+                waitingForConnection();
+                downloadListenerDispatcher.unregisterDownloadListener(downloadListener);
+            });
+        }
+    }
+
+    void postOnConnection(Runnable runnable) {
+        if (runnable == null) return;
+        DownloadExecutors.command.execute(() -> {
+            waitingForConnection();
+            DownloadExecutors.androidMain.execute(runnable);
+        });
     }
 }

@@ -6,6 +6,8 @@ import android.text.TextWatcher
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
@@ -14,6 +16,7 @@ import androidx.lifecycle.ViewModelProviders
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.SimpleItemAnimator
 import com.lyc.downloader.DownloadTask.*
+import com.lyc.downloader.YCDownloader
 import com.lyc.yuchuan_downloader.util.ReactiveAdapter
 import kotlinx.android.synthetic.main.activity_main.*
 import java.io.File
@@ -76,6 +79,31 @@ class MainActivity : AppCompatActivity(), TextWatcher, DownloadItemViewBinder.On
         mainViewModel.failLiveData.observe(this, Observer {
             Toast.makeText(this, it, Toast.LENGTH_SHORT).show()
         })
+
+        val list = (0..YCDownloader.getMaxSupportRunningTask()).toList()
+
+        spinner.adapter = ArrayAdapter<Int>(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            list
+        )
+
+        YCDownloader.postOnConnection {
+            val index = list.indexOf(YCDownloader.getMaxRunningTask())
+            if (index != -1) {
+                spinner.setSelection(index)
+            }
+        }
+
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+
+            }
+
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                YCDownloader.setMaxRunningTask(list[position])
+            }
+        }
     }
 
 

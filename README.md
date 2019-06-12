@@ -1,17 +1,15 @@
 # Yuchuan-Downloader
+
+[![](https://jitpack.io/v/SirLYC/Yuchuan-Downloader.svg)](https://jitpack.io/#SirLYC/Yuchuan-Downloader)
+
 A multi-thread downloader which supports for HTTP.
-```
-Still in developing...
-May be many bugs...
-Be cautious to use this library...
-```
 
 ## Features
 - [x] HTTP/HTTPS download
 - [x] multi-thread download
 - [x] download thread and disk-io thread separated
 - [x] multi download task
-- [x] support for HTTP (resume from break-point)
+- [x] support for HTTP (resume from break-poAint)
 - [x] message control to avoid ui frame drops 
 - [x] multi-process support
 - [ ] other protocol download maybe...
@@ -25,7 +23,55 @@ Be cautious to use this library...
     
     Download library.
 
+
+## Install
+**Step 1.** Add the JitPack repository to your build file
+
+Add it in your root build.gradle at the end of repositories:
+
+```
+allprojects {
+    repositories {
+        ...
+        maven { url 'https://jitpack.io' }
+    }
+}
+```
+
+**Step 2.** Add the dependency
+
+```
+dependencies {
+        implementation 'com.github.SirLYC:Yuchuan-Downloader:latest.release'
+}
+```
+
+> [Check release notes here](https://github.com/SirLYC/Yuchuan-Downloader/releases)
+
+**Step3.** Install YCDownloader
+
+It's recommended to install in `Application` class
+
+``` kotlin
+class App : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        // multi process
+        YCDownloader.install(this, true)
+        // single process
+        //        YCDownloader.install(this, false);
+        // or
+        //        YCDownloader.install(this);
+    }
+}
+```
+
+Then Just learn apis!
+
 ## Main API
+
+You can check all apis in file [YCDownloader.java](https://github.com/SirLYC/Yuchuan-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/YCDownloader.java)
+
 **install**
 ```
 // it is recommended to install it in your Application
@@ -84,6 +130,11 @@ YCDownloader.queryDeletedDownloadInfoList();
 // state == FINISHED
 YCDownloader.queryFinishedDownloadInfoList();
 ```
+
+**other api**
+- set max running task
+- set if you want to avoid main thread receive too much progress update message
+- other... 
 
 ## Licence
 ```

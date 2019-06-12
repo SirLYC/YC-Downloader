@@ -55,7 +55,6 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
 
     private DownloadManager(OkHttpClient client, Context appContext) {
         this.client = client;
-        DownloadExecutors.init();
         SQLiteDatabase db = new DevOpenHelper(appContext, DB_NAME).getWritableDatabase();
         daoSession = new DaoMaster(db).newSession();
         recoverDownloadTasks();
@@ -549,7 +548,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     }
 
     @Override
-    public int getMaxSupportTaskCount() {
+    public int getMaxSupportRunningTask() {
         return MAX_SUPPORT_TASK_COUNT;
     }
 

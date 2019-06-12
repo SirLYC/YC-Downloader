@@ -2,6 +2,7 @@ package com.lyc.downloader;
 
 import android.content.Context;
 import android.os.Looper;
+import androidx.annotation.WorkerThread;
 import com.lyc.downloader.db.DownloadInfo;
 
 import java.util.List;
@@ -13,7 +14,12 @@ import java.util.concurrent.TimeUnit;
  * @author liuyuchuan
  * @date 2019-05-10
  * @email kevinliu.sir@qq.com
- * api of this library
+ * API of this library.
+ * Note that all setXX or register/unregisterXX methods are executed in another thread, so that it won't block main thread.
+ * And they are guarded to be executed after connected to service successfully.
+ * However, all the get/isXX methods are executed in main thread immediately, witch means they won't wait for connection
+ * to the service.
+ * If you want to get the right value immediately, call them in {@link YCDownloader#postOnConnection(Runnable)}
  */
 public abstract class YCDownloader {
     private static BaseServiceManager serviceManager;
@@ -166,6 +172,8 @@ public abstract class YCDownloader {
         serviceManager.delete(id, deleteFile);
     }
 
+    /*---------------------  query sould be called in worker thread! --------------------- */
+    @WorkerThread
     public static DownloadInfo queryDownloadInfo(long id) {
         return serviceManager.queryDownloadInfo(id);
     }
@@ -173,6 +181,7 @@ public abstract class YCDownloader {
     /**
      * state != FINISH && state != CANCELLED
      */
+    @WorkerThread
     public static List<DownloadInfo> queryActiveDownloadInfoList() {
         return serviceManager.queryActiveDownloadInfoList();
     }
@@ -180,6 +189,7 @@ public abstract class YCDownloader {
     /**
      * state == CANCELLED
      */
+    @WorkerThread
     public static List<DownloadInfo> queryDeletedDownloadInfoList() {
         return serviceManager.queryDeletedDownloadInfoList();
     }
@@ -187,6 +197,7 @@ public abstract class YCDownloader {
     /**
      * state == FINISH
      */
+    @WorkerThread
     public static List<DownloadInfo> queryFinishedDownloadInfoList() {
         return serviceManager.queryFinishedDownloadInfoList();
     }
@@ -201,6 +212,11 @@ public abstract class YCDownloader {
      */
     public static void setMaxRunningTask(int count) {
         serviceManager.setMaxRunningTask(count);
+    }
+
+
+    public static int getMaxSupportRunningTask() {
+        return serviceManager.getMaxSupportRunningTask();
     }
 
     public static boolean isAvoidFrameDrop() {
@@ -225,5 +241,14 @@ public abstract class YCDownloader {
 
     public static long getSendMessageIntervalNanos() {
         return serviceManager.getSendMessageIntervalNanos();
+    }
+
+    /**
+     * post a runnable to execute when the download service is connected
+     *
+     * @param runnable the command to execute
+     */
+    public static void postOnConnection(Runnable runnable) {
+        serviceManager.postOnConnection(runnable);
     }
 }

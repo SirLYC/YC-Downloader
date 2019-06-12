@@ -25,7 +25,7 @@ public interface DownloadController {
 
     void setMaxRunningTask(int count);
 
-    int getMaxSupportTaskCount();
+    int getMaxSupportRunningTask();
 
     boolean isAvoidFrameDrop();
 

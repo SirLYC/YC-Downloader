@@ -368,9 +368,17 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     void postOnConnection(Runnable runnable) {
         if (runnable == null) return;
-        DownloadExecutors.command.execute(() -> {
-            waitingForConnection();
-            DownloadExecutors.androidMain.execute(runnable);
-        });
+        if (countDownLatch.getCount() == 0) {
+            if (Thread.currentThread() == Looper.getMainLooper().getThread()) {
+                runnable.run();
+            } else {
+                DownloadExecutors.androidMain.execute(runnable);
+            }
+        } else {
+            DownloadExecutors.command.execute(() -> {
+                waitingForConnection();
+                DownloadExecutors.androidMain.execute(runnable);
+            });
+        }
     }
 }

@@ -1,6 +1,6 @@
-# Yuchuan-Downloader
+# YC-Downloader
 
-[![](https://jitpack.io/v/SirLYC/Yuchuan-Downloader.svg)](https://jitpack.io/#SirLYC/Yuchuan-Downloader)
+[![](https://jitpack.io/v/SirLYC/YC-Downloader.svg)](https://jitpack.io/#SirLYC/YC-Downloader)
 
 A multi-thread downloader which supports for HTTP.
 
@@ -46,7 +46,7 @@ dependencies {
 }
 ```
 
-> [Check release notes here](https://github.com/SirLYC/Yuchuan-Downloader/releases)
+> [Check release notes here](https://github.com/SirLYC/YC-Downloader/releases)
 
 **Step3.** Install YCDownloader
 
@@ -70,7 +70,7 @@ Then Just learn apis!
 
 ## Main API
 
-You can check all apis in file [YCDownloader.java](https://github.com/SirLYC/Yuchuan-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/YCDownloader.java)
+You can check all apis in file [YCDownloader.java](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/YCDownloader.java)
 
 **install**
 ```

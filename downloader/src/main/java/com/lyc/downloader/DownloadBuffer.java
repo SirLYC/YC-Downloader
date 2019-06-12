@@ -9,11 +9,11 @@ import java.util.concurrent.TimeUnit;
  * @date 2019/4/7
  * @email kevinliu.sir@qq.com
  */
-public class DownloadBuffer {
+class DownloadBuffer {
     private final BlockingQueue<Segment> readBufferQueue;
     private final BlockingQueue<Segment> writeBufferQueue;
 
-    public DownloadBuffer(int bufferSize) {
+    DownloadBuffer(int bufferSize) {
         readBufferQueue = new ArrayBlockingQueue<>(2);
         writeBufferQueue = new ArrayBlockingQueue<>(2);
         for (int i = 0; i < 2; i++) {
@@ -21,7 +21,7 @@ public class DownloadBuffer {
         }
     }
 
-    public Segment availableWriteSegment(long timeout) throws InterruptedException {
+    Segment availableWriteSegment(long timeout) throws InterruptedException {
         if (timeout <= 0) {
             return writeBufferQueue.take();
         } else {
@@ -29,7 +29,7 @@ public class DownloadBuffer {
         }
     }
 
-    public Segment availableReadSegment(long timeout) throws InterruptedException {
+    Segment availableReadSegment(long timeout) throws InterruptedException {
         if (timeout <= 0) {
             return readBufferQueue.take();
         } else {
@@ -37,11 +37,11 @@ public class DownloadBuffer {
         }
     }
 
-    public void enqueueReadSegment(Segment segment) {
+    void enqueueReadSegment(Segment segment) {
         readBufferQueue.offer(segment);
     }
 
-    public void enqueueWriteSegment(Segment segment) {
+    void enqueueWriteSegment(Segment segment) {
         writeBufferQueue.offer(segment);
     }
 

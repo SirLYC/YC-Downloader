@@ -5,7 +5,6 @@ import android.content.Intent;
 import android.os.IBinder;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
-import android.util.Log;
 import androidx.annotation.Nullable;
 import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.utils.Logger;
@@ -36,13 +35,13 @@ public class RemoteDownloadService extends Service implements DownloadListener {
 
         @Override
         public void submit(String url, String path, String filename, Map customerHeaders, ISubmitCallback callback) {
-            Log.d("RemoteDownloadService", "submit " + url);
+            Logger.d("RemoteDownloadService", "submit " + url);
             //noinspection unchecked
             downloadManager.submit(url, path, filename, customerHeaders, new SubmitListener() {
                 @Override
                 public void submitSuccess(DownloadInfo downloadInfo) {
                     try {
-                        Log.d("RemoteDownloadService", "submit " + url);
+                        Logger.d("RemoteDownloadService", "submit " + url);
                         callback.submitSuccess(downloadInfo);
                     } catch (RemoteException e) {
                         try {

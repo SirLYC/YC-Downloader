@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
  * Created by Liu Yuchuan on 2019/5/19.
  */
 public abstract class BaseServiceManager implements DownloadController, DownloadInfoProvider {
-    private static final int MAX_SUPPORT_TASK_COUNT = Runtime.getRuntime().availableProcessors() * 2 + 1;
+    private static final int MAX_SUPPORT_TASK_COUNT = Runtime.getRuntime().availableProcessors() * 4;
     private static final long WAITING_TIME = TimeUnit.SECONDS.toNanos(6);
     final Context appContext;
     final DownloadListenerDispatcher downloadListenerDispatcher = new DownloadListenerDispatcher();
@@ -173,8 +173,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
         });
     }
 
-    @Override
-    public int getMaxSupportRunningTask() {
+    int getMaxSupportRunningTask() {
         return MAX_SUPPORT_TASK_COUNT;
     }
 
@@ -194,15 +193,11 @@ public abstract class BaseServiceManager implements DownloadController, Download
 
     @Override
     public void setMaxRunningTask(int count) {
-        if (count <= 0) return;
+        if (count < 0 || count > MAX_SUPPORT_TASK_COUNT) return;
         DownloadExecutors.command.execute(() -> {
             waitingForConnection();
             try {
-                if (count > MAX_SUPPORT_TASK_COUNT) {
-                    downloadService.setMaxRunningTask(MAX_SUPPORT_TASK_COUNT);
-                } else {
-                    downloadService.setMaxRunningTask(count);
-                }
+                downloadService.setMaxRunningTask(count);
             } catch (RemoteException e) {
                 Logger.e(getClass().getSimpleName(), "cannot set max task count", e);
             }
@@ -270,8 +265,9 @@ public abstract class BaseServiceManager implements DownloadController, Download
         try {
             return downloadService.queryDownloadInfo(id);
         } catch (RemoteException e) {
-            throw new IllegalStateException("should not happen");
+            Logger.e(getClass().getSimpleName(), "cannot queryDownloadInfo", e);
         }
+        return null;
     }
 
     @Override
@@ -283,8 +279,9 @@ public abstract class BaseServiceManager implements DownloadController, Download
         try {
             return downloadService.queryActiveDownloadInfoList();
         } catch (RemoteException e) {
-            throw new IllegalStateException("should not happen");
+            Logger.e(getClass().getSimpleName(), "cannot queryActiveDownloadInfoList", e);
         }
+        return null;
     }
 
     @Override
@@ -296,8 +293,10 @@ public abstract class BaseServiceManager implements DownloadController, Download
         try {
             return downloadService.queryDeletedDownloadInfoList();
         } catch (RemoteException e) {
-            throw new IllegalStateException("should not happen");
+            Logger.e(getClass().getSimpleName(), "cannot queryDeletedDownloadInfoList", e);
         }
+
+        return null;
     }
 
     @Override
@@ -309,8 +308,10 @@ public abstract class BaseServiceManager implements DownloadController, Download
         try {
             return downloadService.queryFinishedDownloadInfoList();
         } catch (RemoteException e) {
-            throw new IllegalStateException("should not happen");
+            Logger.e(getClass().getSimpleName(), "cannot queryFinishedDownloadInfoList", e);
         }
+
+        return null;
     }
 
     void registerDownloadListener(Long id, DownloadListener downloadListener) {

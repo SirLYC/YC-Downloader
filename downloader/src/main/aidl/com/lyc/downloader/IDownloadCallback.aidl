@@ -11,7 +11,7 @@ interface IDownloadCallback {
 
     void onUpdateInfo(inout DownloadInfo downloadInfo);
 
-    void onDownloadError(long id, String reason, boolean fatal);
+    void onDownloadError(long id, int code, boolean fatal);
 
     void onDownloadStart(inout DownloadInfo downloadInfo);
 

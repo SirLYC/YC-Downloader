@@ -18,7 +18,7 @@ data class DownloadItem(
     var createdTime: Date? = null,
     var finishedTime: Date? = null,
     var downloadState: Int = 0,
-    var errorMessage: String? = null
+    var errorCode: Int? = null
 ) {
     override fun equals(other: Any?): Boolean {
         return this.id == (other as? DownloadItem)?.id

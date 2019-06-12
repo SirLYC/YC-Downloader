@@ -11,7 +11,6 @@ import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.utils.Logger;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -152,11 +151,11 @@ public abstract class BaseServiceManager implements DownloadController, Download
     }
 
     @Override
-    public void submit(String url, String path, String filename, Map<String, String> customerHeaders, SubmitListener listener) {
+    public void submit(String url, String path, String filename, SubmitListener listener) {
         DownloadExecutors.command.execute(() -> {
             waitingForConnection();
             try {
-                downloadService.submit(url, path, filename, customerHeaders, new Stub() {
+                downloadService.submit(url, path, filename, new Stub() {
                     @Override
                     public void submitSuccess(DownloadInfo downloadInfo) {
                         DownloadExecutors.androidMain.execute(() -> listener.submitSuccess(downloadInfo));

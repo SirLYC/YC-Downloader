@@ -10,7 +10,6 @@ import com.lyc.downloader.db.DownloadInfo;
 
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -84,11 +83,11 @@ public class LocalDownloadService extends Service implements DownloadListener {
     }
 
     @Override
-    public void onDownloadError(long id, String reason, boolean fatal) {
+    public void onDownloadError(long id, int code, boolean fatal) {
         synchronized (downloadCallbacks) {
             for (IDownloadCallback downloadCallback : downloadCallbacks) {
                 try {
-                    downloadCallback.onDownloadError(id, reason, fatal);
+                    downloadCallback.onDownloadError(id, code, fatal);
                 } catch (RemoteException e) {
                     // do nothing
                 }
@@ -196,9 +195,8 @@ public class LocalDownloadService extends Service implements DownloadListener {
         }
 
         @Override
-        public void submit(String url, String path, String filename, Map customerHeaders, ISubmitCallback callback) {
-            //noinspection unchecked
-            downloadManager.submit(url, path, filename, customerHeaders, new SubmitListener() {
+        public void submit(String url, String path, String filename, ISubmitCallback callback) {
+            downloadManager.submit(url, path, filename, new SubmitListener() {
                 @Override
                 public void submitSuccess(DownloadInfo downloadInfo) {
                     try {

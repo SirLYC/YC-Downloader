@@ -5,8 +5,11 @@ import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
 import androidx.annotation.WorkerThread;
 import androidx.collection.LongSparseArray;
-import com.lyc.downloader.db.*;
+import com.lyc.downloader.db.DaoMaster;
 import com.lyc.downloader.db.DaoMaster.DevOpenHelper;
+import com.lyc.downloader.db.DaoSession;
+import com.lyc.downloader.db.DownloadInfo;
+import com.lyc.downloader.db.DownloadInfoDao;
 import com.lyc.downloader.utils.Logger;
 import com.lyc.downloader.utils.UniqueDequeue;
 import okhttp3.OkHttpClient;
@@ -15,7 +18,11 @@ import okhttp3.logging.HttpLoggingInterceptor;
 import okhttp3.logging.HttpLoggingInterceptor.Level;
 
 import java.lang.ref.WeakReference;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.Deque;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -79,12 +86,6 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
             throw new IllegalStateException("init download manager by DownloadManager.init(Context context) first!");
         }
         return instance;
-    }
-
-    void registerTask(DownloadTask downloadTask) {
-        Long id = downloadTask.downloadInfo.getId();
-        taskTable.put(id, downloadTask);
-        infoTable.put(id, downloadTask.downloadInfo);
     }
 
     private void pauseAllInner() {
@@ -254,7 +255,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     }
 
     @Override
-    public void onDownloadError(long id, String reason, boolean fatal) {
+    public void onDownloadError(long id, int code, boolean fatal) {
         DownloadExecutors.message.execute(() -> {
             lastSendMessageTime.remove(id);
             DownloadTask downloadTask = taskTable.get(id);
@@ -265,7 +266,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                     if (userDownloadListener != null) {
                         DownloadListener downloadListener = userDownloadListener.get();
                         if (downloadListener != null) {
-                            downloadListener.onDownloadError(id, reason, fatal);
+                            downloadListener.onDownloadError(id, code, fatal);
                         }
                     }
                 });
@@ -391,11 +392,11 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     }
 
     @WorkerThread
-    private void submitInner(String url, String path, String filename, List<CustomerHeader> customerHeaders, SubmitListener listener) {
+    private void submitInner(String url, String path, String filename, SubmitListener listener) {
         DownloadInfo downloadInfo = new DownloadInfo(null, url, path, filename, true, WAITING,
                 0, 0, null, new Date(), null, null);
         try {
-            Long insertId = PersistUtil.persistDownloadInfo(daoSession, downloadInfo, null, customerHeaders);
+            Long insertId = PersistUtil.persistDownloadInfo(daoSession, downloadInfo, null);
             DownloadExecutors.message.execute(() -> {
                 if (insertId != null) {
                     infoTable.put(insertId, downloadInfo);
@@ -423,13 +424,6 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     @Override
     public void startAll() {
         DownloadExecutors.message.execute(this::startAllInner);
-    }
-
-    public void end() {
-        DownloadExecutors.message.execute(() -> {
-            instance = null;
-            pauseAll();
-        });
     }
 
     // include re-download
@@ -480,24 +474,15 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
      * @param url             download url; must started with http/https
      * @param path            nonnull; parent directory of the file
      * @param filename        self-defined filename; if null, it will be parsed by url or a pivot request by downloadManager
-     * @param customerHeaders customer header (`Range` will be removed)
      * @param listener        listener to inform submit success or fail
      */
     @Override
-    public void submit(String url, String path, String filename, Map<String, String> customerHeaders, SubmitListener listener) {
+    public void submit(String url, String path, String filename, SubmitListener listener) {
         waitForRecovering();
-        List<CustomerHeader> headers = new ArrayList<>();
-        if (customerHeaders != null) {
-            for (String s : customerHeaders.keySet()) {
-                if (s != null && !s.equalsIgnoreCase("range")) {
-                    headers.add(new CustomerHeader(null, 0, s, customerHeaders.get(s)));
-                }
-            }
-        }
         if (path == null) {
             throw new NullPointerException("path cannot be null");
         }
-        DownloadExecutors.io.execute(() -> submitInner(url, path, filename, headers, listener));
+        DownloadExecutors.io.execute(() -> submitInner(url, path, filename, listener));
     }
 
     @Override

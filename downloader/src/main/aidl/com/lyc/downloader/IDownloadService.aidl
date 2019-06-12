@@ -11,7 +11,7 @@ interface IDownloadService {
 
     void removeDownloadCallback(IDownloadCallback callback);
 
-    void submit(String url, String path, String filename, in Map customerHeaders, ISubmitCallback callback);
+    void submit(String url, String path, String filename, ISubmitCallback callback);
 
     DownloadInfo queryDownloadInfo(long id);
 

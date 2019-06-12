@@ -33,7 +33,7 @@ public class DownloadError {
     private DownloadError() {
     }
 
-    public static DownloadError instance() {
+    static DownloadError instance() {
         return instance;
     }
 
@@ -41,7 +41,7 @@ public class DownloadError {
         return code >= 100;
     }
 
-    public void setTranslator(Translator translator) {
+    void setTranslator(Translator translator) {
         if (translator == null) {
             throw new NullPointerException("DownloadError#translator cannot be null");
         }

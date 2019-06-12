@@ -16,7 +16,7 @@ public interface DownloadListener {
 
     void onUpdateInfo(DownloadInfo downloadInfo);
 
-    void onDownloadError(long id, String reason, boolean fatal);
+    void onDownloadError(long id, int code, boolean fatal);
 
     void onDownloadStart(DownloadInfo downloadInfo);
 

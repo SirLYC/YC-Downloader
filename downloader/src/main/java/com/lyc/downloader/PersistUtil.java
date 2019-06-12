@@ -1,8 +1,6 @@
 package com.lyc.downloader;
 
 import android.util.SparseArray;
-import com.lyc.downloader.db.CustomerHeader;
-import com.lyc.downloader.db.CustomerHeaderDao;
 import com.lyc.downloader.db.DaoSession;
 import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.db.DownloadInfoDao;
@@ -20,28 +18,6 @@ import java.util.Objects;
  * Created by Liu Yuchuan on 2019/5/21.
  */
 class PersistUtil {
-
-    private static final Comparator<CustomerHeader> HEADER_COMPARATOR = (o1, o2) -> {
-        if (o1 == null) {
-            return o2 == null ? 0 : -1;
-        }
-
-        if (o2 == null) {
-            return 1;
-        }
-
-        Long id1 = o1.getId();
-        Long id2 = o2.getId();
-        if (id1 == null) {
-            return id2 == null ? 0 : -1;
-        }
-
-        if (id2 == null) {
-            return 1;
-        }
-
-        return Long.compare(id1, id2);
-    };
 
     private static final Comparator<DownloadThreadInfo> THREAD_INFO_COMPARATOR = (o1, o2) -> {
         if (o1 == null) {
@@ -66,24 +42,21 @@ class PersistUtil {
     };
 
     static void persistDownloadInfoQuietly(DaoSession daoSession, DownloadInfo downloadInfo,
-                                           SparseArray<DownloadThreadInfo> downloadThreadInfos,
-                                           List<CustomerHeader> customerHeaderList) {
+                                           SparseArray<DownloadThreadInfo> downloadThreadInfos) {
         try {
-            persistDownloadInfo(daoSession, downloadInfo, downloadThreadInfos, customerHeaderList);
+            persistDownloadInfo(daoSession, downloadInfo, downloadThreadInfos);
         } catch (Exception e) {
             Logger.e("PersistUtil", "cannot persist downloadInfo", e);
         }
     }
 
     static Long persistDownloadInfo(DaoSession daoSession, DownloadInfo downloadInfo,
-                                    SparseArray<DownloadThreadInfo> downloadThreadInfos,
-                                    List<CustomerHeader> customerHeaderList) throws Exception {
+                                    SparseArray<DownloadThreadInfo> downloadThreadInfos) throws Exception {
         if (downloadInfo == null) {
             return null;
         }
         DownloadInfoDao downloadInfoDao = daoSession.getDownloadInfoDao();
         DownloadThreadInfoDao downloadThreadInfoDao = daoSession.getDownloadThreadInfoDao();
-        CustomerHeaderDao customerHeaderDao = daoSession.getCustomerHeaderDao();
         return daoSession.callInTx(() -> {
             downloadInfoDao.save(downloadInfo);
             Long infoId = downloadInfo.getId();
@@ -91,21 +64,6 @@ class PersistUtil {
                 return null;
             }
 
-            if (customerHeaderList != null) {
-                downloadInfo.resetCustomerHeaders();
-                List<CustomerHeader> oldHeaders = downloadInfo.getCustomerHeaders();
-                Collections.sort(oldHeaders, HEADER_COMPARATOR);
-                Collections.sort(customerHeaderList, HEADER_COMPARATOR);
-                if (!oldHeaders.equals(customerHeaderList)) {
-                    for (CustomerHeader oldHeader : oldHeaders) {
-                        customerHeaderDao.delete(oldHeader);
-                    }
-                    for (CustomerHeader customerHeader : customerHeaderList) {
-                        customerHeader.setDownloadInfoId(infoId);
-                        customerHeaderDao.save(customerHeader);
-                    }
-                }
-            }
             if (downloadThreadInfos != null) {
                 downloadInfo.resetDownloadThreadInfos();
                 List<DownloadThreadInfo> oldDownloadThreadInfos = downloadInfo.getDownloadThreadInfos();
@@ -142,19 +100,13 @@ class PersistUtil {
         }
 
         downloadInfo.resetDownloadThreadInfos();
-        downloadInfo.resetCustomerHeaders();
         DownloadInfoDao downloadInfoDao = daoSession.getDownloadInfoDao();
         DownloadThreadInfoDao downloadThreadInfoDao = daoSession.getDownloadThreadInfoDao();
-        CustomerHeaderDao customerHeaderDao = daoSession.getCustomerHeaderDao();
         try {
             daoSession.callInTx(() -> {
                 downloadInfoDao.delete(downloadInfo);
                 downloadThreadInfoDao.queryBuilder()
                         .where(DownloadThreadInfoDao.Properties.DownloadInfoId.eq(downloadInfo.getId()))
-                        .buildDelete()
-                        .executeDeleteWithoutDetachingEntities();
-                customerHeaderDao.queryBuilder()
-                        .where(CustomerHeaderDao.Properties.DownloadInfoId.eq(downloadInfo.getId()))
                         .buildDelete()
                         .executeDeleteWithoutDetachingEntities();
                 return null;

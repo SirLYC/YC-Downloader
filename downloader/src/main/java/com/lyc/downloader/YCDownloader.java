@@ -6,7 +6,6 @@ import androidx.annotation.WorkerThread;
 import com.lyc.downloader.db.DownloadInfo;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -149,16 +148,14 @@ public abstract class YCDownloader {
     /**
      * submit a task to downloader service
      *
-     * @param url             Download url, only HTTP or HTTPS supported for now.
-     * @param path            Parent directory to save the downloaded file
-     * @param filename        Downloaded filename, nullable. If it's null, the name will be decided by downloader
-     *                        service and inform caller by {@link DownloadListener}
-     * @param customerHeaders CustomerHeaders in HTTP. Note that key `range` will be remove from it because
-     *                        the downloader need it.
-     * @param listener        the listener inform caller the result of this commit.
+     * @param url      Download url, only HTTP or HTTPS supported for now.
+     * @param path     Parent directory to save the downloaded file
+     * @param filename Downloaded filename, nullable. If it's null, the name will be decided by downloader
+     *                 service and inform caller by {@link DownloadListener}
+     * @param listener the listener inform caller the result of this commit.
      */
-    public static void submit(String url, String path, String filename, Map<String, String> customerHeaders, SubmitListener listener) {
-        serviceManager.submit(url, path, filename, customerHeaders, listener);
+    public static void submit(String url, String path, String filename, SubmitListener listener) {
+        serviceManager.submit(url, path, filename, listener);
     }
 
     /**
@@ -250,5 +247,23 @@ public abstract class YCDownloader {
      */
     public static void postOnConnection(Runnable runnable) {
         serviceManager.postOnConnection(runnable);
+    }
+
+    /**
+     * @see DownloadError#translator
+     * This function is not an IPC call.
+     * If you install downloader in multi-process mode
+     * and want your translator to get work, call this method in the place where all
+     * the process will called (suck as static block, Application's methods, singleInstance's methods...).
+     * For default Translator implementation
+     * @see DownloadError
+     */
+    public static void setErrorTranslator(DownloadError.Translator translator) {
+        if (translator == null) return;
+        DownloadError.instance().setTranslator(translator);
+    }
+
+    public static String translateErrorCode(int code) {
+        return DownloadError.instance().translate(code);
     }
 }

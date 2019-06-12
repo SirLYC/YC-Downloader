@@ -3,7 +3,12 @@ package com.lyc.downloader;
 import android.annotation.SuppressLint;
 import com.lyc.downloader.db.DownloadInfo;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * @author liuyuchuan
@@ -123,14 +128,14 @@ public class DownloadListenerDispatcher extends IDownloadCallback.Stub {
     }
 
     @Override
-    public void onDownloadError(long id, String reason, boolean fatal) {
+    public void onDownloadError(long id, int code, boolean fatal) {
         Collection<DownloadListener> downloadListeners = getDispatchListeners(id);
         if (downloadListeners.isEmpty()) {
             return;
         }
         DownloadExecutors.androidMain.execute(() -> {
             for (DownloadListener downloadListener : downloadListeners) {
-                downloadListener.onDownloadError(id, reason, fatal);
+                downloadListener.onDownloadError(id, code, fatal);
             }
         });
     }

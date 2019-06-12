@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.lyc.downloader.DownloadTask.*
+import com.lyc.downloader.YCDownloader
 import com.lyc.downloader.utils.DownloadStringUtil
 import kotlinx.android.synthetic.main.item_download.view.*
 import me.drakeet.multitype.ItemViewBinder
@@ -78,7 +79,7 @@ class DownloadItemViewBinder(
                 WAITING -> stateString = "$stateString | 等待中"
                 CANCELED -> stateString = "已取消"
                 ERROR, FATAL_ERROR -> {
-                    var errorMessage: String? = item.errorMessage
+                    var errorMessage: String? = YCDownloader.translateErrorCode(item.errorCode!!)
                     if (errorMessage == null) {
                         errorMessage = "下载失败"
                     }

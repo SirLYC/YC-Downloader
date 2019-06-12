@@ -42,7 +42,7 @@ allprojects {
 
 ```
 dependencies {
-        implementation 'com.github.SirLYC:Yuchuan-Downloader:latest.release'
+    implementation 'com.github.SirLYC:Yuchuan-Downloader:latest.release'
 }
 ```
 
@@ -104,18 +104,17 @@ private SubmitListener submitListener = new SubmitListener() {
 };
 // path: parent directory to store your file
 // filename: can be null; if not null, downloader will use it to save your file
-// customerHeaders: Map<String, String>
-YCDownloader.submit(url, path, filename, customerHeaders, submitListener);
+YCDownloader.submit(url, path, filename, submitListener);
 ``` 
 
 **listen to download progress or state change**
 ```
 DownloadListener downloadListener = ...;
-YCDownloader.register(downloadListener);
+YCDownloader.registerDownloadListener(downloadListener);
 
 // you should unregister it to avoid memory leak
 // such as Activity.OnDestroy
-YCDownloader.unregister(downloadListener);
+YCDownloader.unregisterDownloadListener(downloadListener);
 ```
 
 **query download info**

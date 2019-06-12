@@ -22,7 +22,7 @@ import java.util.List;
                 @org.greenrobot.greendao.annotation.Index(value = "url DESC")
         }
 )
-public class DownloadInfo implements Comparable<DownloadInfo>, Parcelable {
+public class DownloadInfo implements Parcelable {
     @Id(autoincrement = true)
     private Long id;
     @NotNull
@@ -43,23 +43,6 @@ public class DownloadInfo implements Comparable<DownloadInfo>, Parcelable {
     private Date createdTime;
     @Property(nameInDb = "finished_time")
     private Date finishedTime;
-    @Property(nameInDb = "error_msg")
-    private String errorMsg;
-    @ToMany(referencedJoinProperty = "downloadInfoId")
-    private List<CustomerHeader> customerHeaders;
-    @ToMany(referencedJoinProperty = "downloadInfoId")
-    private List<DownloadThreadInfo> downloadThreadInfos;
-    /**
-     * Used to resolve relations
-     */
-    @Generated(hash = 2040040024)
-    private transient DaoSession daoSession;
-    /**
-     * Used for active entity operations.
-     */
-    @Generated(hash = 1465593784)
-    private transient DownloadInfoDao myDao;
-
     public static final Creator<DownloadInfo> CREATOR = new Creator<DownloadInfo>() {
         @Override
         public DownloadInfo createFromParcel(Parcel in) {
@@ -71,15 +54,29 @@ public class DownloadInfo implements Comparable<DownloadInfo>, Parcelable {
             return new DownloadInfo[size];
         }
     };
+    @ToMany(referencedJoinProperty = "downloadInfoId")
+    private List<DownloadThreadInfo> downloadThreadInfos;
+    @Property(nameInDb = "error_msg")
+    private Integer errorCode;
+    /**
+     * Used to resolve relations
+     */
+    @Generated(hash = 2040040024)
+    private transient DaoSession daoSession;
+    /**
+     * Used for active entity operations.
+     */
+    @Generated(hash = 1465593784)
+    private transient DownloadInfoDao myDao;
 
-    @Generated(hash = 327086747)
-    public DownloadInfo() {
+    protected DownloadInfo(Parcel in) {
+        readFromParcel(in);
     }
 
-    @Generated(hash = 9671916)
+    @Generated(hash = 459431950)
     public DownloadInfo(Long id, @NotNull String url, @NotNull String path, String filename,
                         boolean resumable, int downloadItemState, long downloadedSize, long totalSize,
-                        String lastModified, Date createdTime, Date finishedTime, String errorMsg) {
+                        String lastModified, Date createdTime, Date finishedTime, Integer errorCode) {
         this.id = id;
         this.url = url;
         this.path = path;
@@ -91,7 +88,7 @@ public class DownloadInfo implements Comparable<DownloadInfo>, Parcelable {
         this.lastModified = lastModified;
         this.createdTime = createdTime;
         this.finishedTime = finishedTime;
-        this.errorMsg = errorMsg;
+        this.errorCode = errorCode;
     }
 
     public Long getId() {
@@ -118,6 +115,43 @@ public class DownloadInfo implements Comparable<DownloadInfo>, Parcelable {
         this.path = path;
     }
 
+    @Generated(hash = 327086747)
+    public DownloadInfo() {
+    }
+
+    @Override
+    public void writeToParcel(Parcel dest, int flags) {
+        if (id == null) {
+            dest.writeByte((byte) 0);
+        } else {
+            dest.writeByte((byte) 1);
+            dest.writeLong(id);
+        }
+        dest.writeString(url);
+        dest.writeString(path);
+        dest.writeString(filename);
+        dest.writeByte((byte) (resumable ? 1 : 0));
+        dest.writeInt(downloadItemState);
+        dest.writeLong(downloadedSize);
+        dest.writeLong(totalSize);
+        dest.writeString(lastModified);
+        if (errorCode == null) {
+            dest.writeByte((byte) 0);
+        } else {
+            dest.writeByte((byte) 1);
+            dest.writeInt(errorCode);
+        }
+    }
+
+    @Override
+    public int describeContents() {
+        return 0;
+    }
+
+    public String getFilename() {
+        return this.filename;
+    }
+
     public int getDownloadItemState() {
         return this.downloadItemState;
     }
@@ -126,35 +160,52 @@ public class DownloadInfo implements Comparable<DownloadInfo>, Parcelable {
         this.downloadItemState = downloadItemState;
     }
 
-    /**
-     * To-many relationship, resolved on first access (and after reset).
-     * Changes to to-many relations are not persisted, make changes to the target entity.
-     */
-    @Generated(hash = 1083281654)
-    public List<CustomerHeader> getCustomerHeaders() {
-        if (customerHeaders == null) {
-            final DaoSession daoSession = this.daoSession;
-            if (daoSession == null) {
-                throw new DaoException("Entity is detached from DAO context");
-            }
-            CustomerHeaderDao targetDao = daoSession.getCustomerHeaderDao();
-            List<CustomerHeader> customerHeadersNew = targetDao
-                    ._queryDownloadInfo_CustomerHeaders(id);
-            synchronized (this) {
-                if (customerHeaders == null) {
-                    customerHeaders = customerHeadersNew;
-                }
-            }
-        }
-        return customerHeaders;
+    public void setFilename(String filename) {
+        this.filename = filename;
     }
 
-    /**
-     * Resets a to-many relationship, making the next get call to query for a fresh result.
-     */
-    @Generated(hash = 433013855)
-    public synchronized void resetCustomerHeaders() {
-        customerHeaders = null;
+    public boolean getResumable() {
+        return this.resumable;
+    }
+
+    public void setResumable(boolean resumable) {
+        this.resumable = resumable;
+    }
+
+    public long getDownloadedSize() {
+        return this.downloadedSize;
+    }
+
+    public void setDownloadedSize(long downloadedSize) {
+        this.downloadedSize = downloadedSize;
+    }
+
+    public long getTotalSize() {
+        return this.totalSize;
+    }
+
+    public void setTotalSize(long totalSize) {
+        this.totalSize = totalSize;
+    }
+
+    public String getLastModified() {
+        return this.lastModified;
+    }
+
+    public void setLastModified(String lastModified) {
+        this.lastModified = lastModified;
+    }
+
+    public Date getCreatedTime() {
+        return this.createdTime;
+    }
+
+    public void setCreatedTime(Date createdTime) {
+        this.createdTime = createdTime;
+    }
+
+    public Date getFinishedTime() {
+        return this.finishedTime;
     }
 
     /**
@@ -224,105 +275,16 @@ public class DownloadInfo implements Comparable<DownloadInfo>, Parcelable {
         myDao.update(this);
     }
 
-    public boolean getResumable() {
-        return this.resumable;
-    }
-
-    public void setResumable(boolean resumable) {
-        this.resumable = resumable;
-    }
-
-    public long getDownloadedSize() {
-        return this.downloadedSize;
-    }
-
-    public void setDownloadedSize(long downloadedSize) {
-        this.downloadedSize = downloadedSize;
-    }
-
-    public long getTotalSize() {
-        return this.totalSize;
-    }
-
-    public void setTotalSize(long totalSize) {
-        this.totalSize = totalSize;
-    }
-
-    public String getErrorMsg() {
-        return this.errorMsg;
-    }
-
-    public void setErrorMsg(String errorMsg) {
-        this.errorMsg = errorMsg;
-    }
-
-    public Date getCreatedTime() {
-        return this.createdTime;
-    }
-
-    public void setCreatedTime(Date createdTime) {
-        this.createdTime = createdTime;
-    }
-
-    public Date getFinishedTime() {
-        return this.finishedTime;
-    }
-
     public void setFinishedTime(Date finishedTime) {
         this.finishedTime = finishedTime;
     }
 
-    @Override
-    public int compareTo(DownloadInfo o) {
-        if (o == null) return 1;
-        return this.createdTime.compareTo(o.createdTime);
+    public Integer getErrorCode() {
+        return this.errorCode;
     }
 
-    public String getFilename() {
-        return this.filename;
-    }
-
-    public void setFilename(String filename) {
-        this.filename = filename;
-    }
-
-    public String getLastModified() {
-        return this.lastModified;
-    }
-
-    public void setLastModified(String lastModified) {
-        this.lastModified = lastModified;
-    }
-
-    @Override
-    public String toString() {
-        return "DownloadInfo{" +
-                "id=" + id +
-                ", url='" + url + '\'' +
-                ", path='" + path + '\'' +
-                ", filename='" + filename + '\'' +
-                ", resumable=" + resumable +
-                ", downloadItemState=" + downloadItemState +
-                ", downloadedSize=" + downloadedSize +
-                ", totalSize=" + totalSize +
-                ", lastModified='" + lastModified + '\'' +
-                ", createdTime=" + createdTime +
-                ", finishedTime=" + finishedTime +
-                ", errorMsg='" + errorMsg + '\'' +
-                ", customerHeaders=" + customerHeaders +
-                ", downloadThreadInfos=" + downloadThreadInfos +
-                ", daoSession=" + daoSession +
-                ", myDao=" + myDao +
-                '}';
-    }
-
-    protected DownloadInfo(Parcel in) {
-        readFromParcel(in);
-    }
-
-    @Override
-    public int describeContents() {
-        return 0;
+    public void setErrorCode(Integer errorCode) {
+        this.errorCode = errorCode;
     }
 
     public void readFromParcel(Parcel in) {
@@ -339,26 +301,11 @@ public class DownloadInfo implements Comparable<DownloadInfo>, Parcelable {
         downloadedSize = in.readLong();
         totalSize = in.readLong();
         lastModified = in.readString();
-        errorMsg = in.readString();
-    }
-
-    @Override
-    public void writeToParcel(Parcel dest, int flags) {
-        if (id == null) {
-            dest.writeByte((byte) 0);
+        if (in.readByte() == 0) {
+            errorCode = null;
         } else {
-            dest.writeByte((byte) 1);
-            dest.writeLong(id);
+            errorCode = in.readInt();
         }
-        dest.writeString(url);
-        dest.writeString(path);
-        dest.writeString(filename);
-        dest.writeByte((byte) (resumable ? 1 : 0));
-        dest.writeInt(downloadItemState);
-        dest.writeLong(downloadedSize);
-        dest.writeLong(totalSize);
-        dest.writeString(lastModified);
-        dest.writeString(errorMsg);
     }
 
     /** called by internal mechanisms, do not call yourself. */
@@ -367,6 +314,4 @@ public class DownloadInfo implements Comparable<DownloadInfo>, Parcelable {
         this.daoSession = daoSession;
         myDao = daoSession != null ? daoSession.getDownloadInfoDao() : null;
     }
-
-
 }

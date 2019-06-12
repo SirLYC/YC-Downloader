@@ -10,7 +10,6 @@ import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.utils.Logger;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * @author liuyuchuan
@@ -34,10 +33,9 @@ public class RemoteDownloadService extends Service implements DownloadListener {
         }
 
         @Override
-        public void submit(String url, String path, String filename, Map customerHeaders, ISubmitCallback callback) {
+        public void submit(String url, String path, String filename, ISubmitCallback callback) {
             Logger.d("RemoteDownloadService", "submit " + url);
-            //noinspection unchecked
-            downloadManager.submit(url, path, filename, customerHeaders, new SubmitListener() {
+            downloadManager.submit(url, path, filename, new SubmitListener() {
                 @Override
                 public void submitSuccess(DownloadInfo downloadInfo) {
                     try {
@@ -201,12 +199,12 @@ public class RemoteDownloadService extends Service implements DownloadListener {
     }
 
     @Override
-    public void onDownloadError(long id, String reason, boolean fatal) {
+    public void onDownloadError(long id, int code, boolean fatal) {
         int n = downloadCallbackList.beginBroadcast();
         for (int i = 0; i < n; i++) {
             IDownloadCallback broadcastItem = downloadCallbackList.getBroadcastItem(i);
             try {
-                broadcastItem.onDownloadError(id, reason, fatal);
+                broadcastItem.onDownloadError(id, code, fatal);
             } catch (RemoteException e) {
                 Logger.e(TAG, "send downloadError event for task#" + id + " failed.", e);
             }

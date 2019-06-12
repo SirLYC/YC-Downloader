@@ -155,7 +155,7 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
     }
 
     internal fun submit(url: String) {
-        YCDownloader.submit(url, path, null, null, this)
+        YCDownloader.submit(url, path, null, this)
     }
 
     private fun doUpdateCallback(id: Long, updateCallback: (item: DownloadItem) -> DownloadItem) {
@@ -193,10 +193,10 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
         }
     }
 
-    override fun onDownloadError(id: Long, reason: String, fatal: Boolean) {
+    override fun onDownloadError(id: Long, reason: Int, fatal: Boolean) {
         doUpdateCallback(id) { item ->
             item.downloadState = ERROR
-            item.errorMessage = reason
+            item.errorCode = reason
             item
         }
     }
@@ -270,7 +270,7 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
             info.createdTime,
             info.finishedTime,
             info.downloadItemState,
-            info.errorMsg
+            info.errorCode
         )
     }
 

@@ -16,11 +16,14 @@ import java.util.List;
  * @date 2019-05-10
  * @email kevinliu.sir@qq.com
  */
-public class RemoteDownloadService extends Service implements DownloadListener {
+public class RemoteDownloadService extends Service implements DownloadListener, DownloadTasksChangeListener {
 
     public static final String TAG = "RemoteDownloadService";
     private static DownloadManager downloadManager;
     private final RemoteCallbackList<IDownloadCallback> downloadCallbackList = new RemoteCallbackList<>();
+    private final RemoteCallbackList<IDownloadTasksChangeListener> downloadTasksChangeListenerCallbackList =
+            new RemoteCallbackList<>();
+
     private final IDownloadService.Stub downloadService = new IDownloadService.Stub() {
         @Override
         public void registerDownloadCallback(IDownloadCallback callback) {
@@ -30,6 +33,16 @@ public class RemoteDownloadService extends Service implements DownloadListener {
         @Override
         public void removeDownloadCallback(IDownloadCallback callback) {
             downloadCallbackList.unregister(callback);
+        }
+
+        @Override
+        public void registerDownloadTasksChangeListener(IDownloadTasksChangeListener callback) {
+            downloadTasksChangeListenerCallbackList.register(callback);
+        }
+
+        @Override
+        public void removeDownloadTasksChangeListener(IDownloadTasksChangeListener callback) {
+            downloadTasksChangeListenerCallbackList.unregister(callback);
         }
 
         @Override
@@ -294,5 +307,31 @@ public class RemoteDownloadService extends Service implements DownloadListener {
             }
         }
         downloadCallbackList.finishBroadcast();
+    }
+
+    @Override
+    public void onNewDownloadTaskArrive(DownloadInfo downloadInfo) {
+        int n = downloadTasksChangeListenerCallbackList.beginBroadcast();
+        for (int i = 0; i < n; i++) {
+            IDownloadTasksChangeListener broadcastItem = downloadTasksChangeListenerCallbackList.getBroadcastItem(i);
+            try {
+                broadcastItem.onNewDownloadTaskArrive(downloadInfo);
+            } catch (RemoteException e) {
+                Logger.e(TAG, "onNewDownloadTaskArrive", e);
+            }
+        }
+    }
+
+    @Override
+    public void onDownloadTaskRemove(long id) {
+        int n = downloadTasksChangeListenerCallbackList.beginBroadcast();
+        for (int i = 0; i < n; i++) {
+            IDownloadTasksChangeListener broadcastItem = downloadTasksChangeListenerCallbackList.getBroadcastItem(i);
+            try {
+                broadcastItem.onDownloadTaskRemove(id);
+            } catch (RemoteException e) {
+                Logger.e(TAG, "onDownloadTaskRemove", e);
+            }
+        }
     }
 }

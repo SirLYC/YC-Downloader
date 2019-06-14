@@ -10,6 +10,7 @@ import com.lyc.downloader.ISubmitCallback.Stub;
 import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.utils.Logger;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -23,9 +24,34 @@ public abstract class BaseServiceManager implements DownloadController, Download
     private static final long WAITING_TIME = TimeUnit.SECONDS.toNanos(6);
     final Context appContext;
     final DownloadListenerDispatcher downloadListenerDispatcher = new DownloadListenerDispatcher();
+    private final Set<DownloadTasksChangeListener> downloadTasksChangeListeners = new LinkedHashSet<>();
     IDownloadService downloadService;
     final CountDownLatch countDownLatch = new CountDownLatch(1);
     ServiceConnection downloadServiceConnection;
+    final IDownloadTasksChangeListener downloadTasksChangeListener = new IDownloadTasksChangeListener.Stub() {
+        @Override
+        public void onNewDownloadTaskArrive(DownloadInfo downloadInfo) {
+            if (!downloadTasksChangeListeners.isEmpty()) {
+                DownloadExecutors.androidMain.execute(() -> {
+                    for (DownloadTasksChangeListener downloadTasksChangeListener : downloadTasksChangeListeners) {
+                        downloadTasksChangeListener.onNewDownloadTaskArrive(downloadInfo);
+                    }
+                });
+            }
+        }
+
+        @Override
+        public void onDownloadTaskRemove(long id) {
+            if (!downloadTasksChangeListeners.isEmpty()) {
+                DownloadExecutors.androidMain.execute(() -> {
+                    for (DownloadTasksChangeListener downloadTasksChangeListener : downloadTasksChangeListeners) {
+                        downloadTasksChangeListener.onDownloadTaskRemove(id);
+                    }
+                });
+            }
+        }
+    };
+    int tryToConnectCount = 3;
     DeathRecipient deathRecipient = new DeathRecipient() {
         @Override
         public void binderDied() {
@@ -34,7 +60,9 @@ public abstract class BaseServiceManager implements DownloadController, Download
                 downloadService.asBinder().unlinkToDeath(deathRecipient, 0);
             }
             downloadService = null;
-            connectToService();
+            if (tryToConnectCount-- > 0) {
+                connectToService();
+            }
         }
     };
 
@@ -366,6 +394,14 @@ public abstract class BaseServiceManager implements DownloadController, Download
         }
     }
 
+    void registerDownloadTasksChangeListener(DownloadTasksChangeListener downloadTasksChangeListener) {
+        downloadTasksChangeListeners.add(downloadTasksChangeListener);
+    }
+
+    void removeDownloadTasksChangeListener(DownloadTasksChangeListener downloadTasksChangeListener) {
+        downloadTasksChangeListeners.remove(downloadTasksChangeListener);
+    }
+
     void postOnConnection(Runnable runnable) {
         if (runnable == null) return;
         if (countDownLatch.getCount() == 0) {
@@ -381,4 +417,20 @@ public abstract class BaseServiceManager implements DownloadController, Download
             });
         }
     }
+
+    void registerLocalListeners(IDownloadService downloadService) {
+        try {
+            downloadService.registerDownloadCallback(downloadListenerDispatcher);
+        } catch (RemoteException e) {
+            Logger.e("BaseServiceManager", "registerDownloadCallback", e);
+        }
+
+        try {
+            downloadService.registerDownloadTasksChangeListener(downloadTasksChangeListener);
+        } catch (RemoteException e) {
+            Logger.e("BaseServiceManager", "registerDownloadTasksChangeListener", e);
+        }
+    }
+
+    abstract boolean isInServerProcess();
 }

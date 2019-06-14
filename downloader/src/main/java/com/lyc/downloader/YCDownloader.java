@@ -1,8 +1,12 @@
 package com.lyc.downloader;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.os.Looper;
+import android.util.Log;
 import androidx.annotation.WorkerThread;
+import androidx.core.content.ContextCompat;
 import com.lyc.downloader.db.DownloadInfo;
 
 import java.util.List;
@@ -24,12 +28,39 @@ public abstract class YCDownloader {
     private static BaseServiceManager serviceManager;
     private static boolean installed;
 
+    private static final String TAG = "YCDownloader";
+
     private static void checkInstall() {
         if (!installed) {
             throw new IllegalStateException("Cannot access to YCDownloader! Did you forget to install it first?");
         }
     }
 
+    private static void checkPermissions(Context context) {
+        String[] requiredPermissions = {Manifest.permission.INTERNET};
+
+        boolean missingRequiredPermission = false;
+        for (String requiredPermission : requiredPermissions) {
+            if (ContextCompat.checkSelfPermission(context, requiredPermission) != PackageManager.PERMISSION_GRANTED) {
+                missingRequiredPermission = true;
+                Log.e(TAG, "missing required permission: " + requiredPermission);
+            }
+        }
+
+        if (missingRequiredPermission) {
+            throw new IllegalStateException("Missing required permissions! Please check log and manifest.");
+        }
+
+        // these permissions is not required but important for downloader
+        String[] importantPermissions = {Manifest.permission.WRITE_EXTERNAL_STORAGE};
+        for (String importantPermission : importantPermissions) {
+            if (ContextCompat.checkSelfPermission(context, importantPermission) != PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "missing important permission: " + importantPermission);
+            }
+        }
+    }
+
+    /*--------------------------------------- install ---------------------------------------*/
     public static void install(Context context) {
         install(context, false);
     }
@@ -46,6 +77,9 @@ public abstract class YCDownloader {
         if (Thread.currentThread() != Looper.getMainLooper().getThread()) {
             throw new UnsupportedOperationException("cannot install YCDownloader in worker thread");
         }
+
+        checkPermissions(context);
+
         if (multiProcess) {
             serviceManager = new RemoteServiceManager(context);
         } else {
@@ -53,6 +87,8 @@ public abstract class YCDownloader {
         }
         installed = true;
     }
+
+    /*---------------------------------------- api ----------------------------------------*/
 
     /**
      * register download listener for all tasks
@@ -265,5 +301,23 @@ public abstract class YCDownloader {
 
     public static String translateErrorCode(int code) {
         return DownloadError.instance().translate(code);
+    }
+
+    /**
+     * @see DownloadTasksChangeListener
+     */
+    public static void registerDownlaodTasksChangeListener(DownloadTasksChangeListener downloadTasksChangeListener) {
+        serviceManager.registerDownloadTasksChangeListener(downloadTasksChangeListener);
+    }
+
+    /**
+     * @see DownloadTasksChangeListener
+     */
+    public static void removeDownloadTasksChangeListener(DownloadTasksChangeListener downloadTasksChangeListener) {
+        serviceManager.removeDownloadTasksChangeListener(downloadTasksChangeListener);
+    }
+
+    public static boolean isInServerProcess() {
+        return serviceManager.isInServerProcess();
     }
 }

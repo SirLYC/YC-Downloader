@@ -50,6 +50,13 @@ dependencies {
 
 **Step3.** Install YCDownloader
 
+In `manifest`:
+
+```
+<!--internet access is needed-->
+<uses-permission android:name="android.permission.INTERNET"/>
+```
+
 It's recommended to install in `Application` class
 
 ``` kotlin
@@ -99,7 +106,7 @@ private SubmitListener submitListener = new SubmitListener() {
 
         @Override
         public void submitFail(Exception e) {
-            Log.e("Submit", "success failed", e);
+            Log.e("Submit", "submit failed", e);
         }
 };
 // path: parent directory to store your file

@@ -3,6 +3,7 @@ package com.lyc.downloader;
 
 import com.lyc.downloader.IDownloadCallback;
 import com.lyc.downloader.ISubmitCallback;
+import com.lyc.downloader.IDownloadTasksChangeListener;
 import com.lyc.downloader.db.DownloadInfo;
 
 interface IDownloadService {
@@ -10,6 +11,10 @@ interface IDownloadService {
     void registerDownloadCallback(IDownloadCallback callback);
 
     void removeDownloadCallback(IDownloadCallback callback);
+
+    void registerDownloadTasksChangeListener(IDownloadTasksChangeListener callback);
+
+    void removeDownloadTasksChangeListener(IDownloadTasksChangeListener callback);
 
     void submit(String url, String path, String filename, ISubmitCallback callback);
 

@@ -50,6 +50,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     private final Deque<Long> pausingTasksId = new UniqueDequeue<>();
     // avoid memory leak
     private WeakReference<DownloadListener> userDownloadListener;
+    DownloadTasksChangeListener downloadTasksChangeListener;
     private int maxRunningTask = 4;
     private volatile boolean avoidFrameDrop = true;
 
@@ -404,6 +405,12 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                     taskTable.put(insertId, downloadTask);
                     waitingTasksId.add(insertId);
                     DownloadExecutors.androidMain.execute(() -> listener.submitSuccess(downloadInfo));
+                    // all DownloadTasksChangeListener runs on message thread
+                    DownloadExecutors.message.execute(() -> {
+                        if (downloadTasksChangeListener != null) {
+                            downloadTasksChangeListener.onNewDownloadTaskArrive(downloadInfo);
+                        }
+                    });
                     schedule();
                 } else {
                     DownloadExecutors.androidMain.execute(() -> listener.submitFail(new Exception("创建任务失败")));
@@ -466,15 +473,18 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
             downloadTask.cancel();
+            if (downloadTasksChangeListener != null) {
+                downloadTasksChangeListener.onDownloadTaskRemove(id);
+            }
         });
     }
 
 
     /**
-     * @param url             download url; must started with http/https
-     * @param path            nonnull; parent directory of the file
-     * @param filename        self-defined filename; if null, it will be parsed by url or a pivot request by downloadManager
-     * @param listener        listener to inform submit success or fail
+     * @param url      download url; must started with http/https
+     * @param path     nonnull; parent directory of the file
+     * @param filename self-defined filename; if null, it will be parsed by url or a pivot request by downloadManager
+     * @param listener listener to inform submit success or fail
      */
     @Override
     public void submit(String url, String path, String filename, SubmitListener listener) {
@@ -498,6 +508,9 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                 errorTasksId.remove(id);
                 pausingTasksId.remove(id);
                 downloadTask.delete(deleteFile);
+                if (downloadTasksChangeListener != null) {
+                    downloadTasksChangeListener.onDownloadTaskRemove(id);
+                }
             } else {
                 Logger.w("DownloadManager", "delete a task that is not present in DownloadManager! find in db. id = " + id);
                 DownloadExecutors.io.execute(() -> {

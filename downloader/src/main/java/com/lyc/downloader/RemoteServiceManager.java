@@ -29,13 +29,7 @@ class RemoteServiceManager extends BaseServiceManager {
                 } catch (RemoteException e) {
                     Logger.e("RemoteServiceManager", "cannot link to death", e);
                 }
-                downloadService = IDownloadService.Stub.asInterface(service);
-                try {
-                    downloadService.registerDownloadCallback(downloadListenerDispatcher);
-                } catch (RemoteException e) {
-                    Logger.e("RemoteServiceManager", "cannot register downloadListenerDispatcher", e);
-                }
-                countDownLatch.countDown();
+                registerLocalListeners(LocalDownloadService.asInterface(service));
             }
 
             @Override
@@ -59,5 +53,10 @@ class RemoteServiceManager extends BaseServiceManager {
                 Logger.d("RemoteServiceManager", "no permission to download service");
             }
         }
+    }
+
+    @Override
+    boolean isInServerProcess() {
+        return inServerProcess;
     }
 }

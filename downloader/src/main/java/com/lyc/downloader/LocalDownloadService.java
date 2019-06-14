@@ -8,15 +8,16 @@ import android.os.RemoteException;
 import androidx.annotation.Nullable;
 import com.lyc.downloader.db.DownloadInfo;
 
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
  * Created by Liu Yuchuan on 2019/5/19.
  */
-public class LocalDownloadService extends Service implements DownloadListener {
-    private final Set<IDownloadCallback> downloadCallbacks = new HashSet<>();
+public class LocalDownloadService extends Service implements DownloadListener, DownloadTasksChangeListener {
+    private final Set<IDownloadCallback> downloadCallbacks = new LinkedHashSet<>();
+    private final Set<IDownloadTasksChangeListener> downloadTasksChangeListeners = new LinkedHashSet<>();
     private LocalDownloadServiceBinder binder = new LocalDownloadServiceBinder();
     private DownloadManager downloadManager;
 
@@ -179,6 +180,28 @@ public class LocalDownloadService extends Service implements DownloadListener {
         }
     }
 
+    @Override
+    public void onNewDownloadTaskArrive(DownloadInfo downloadInfo) {
+        for (IDownloadTasksChangeListener downloadTasksChangeListener : downloadTasksChangeListeners) {
+            try {
+                downloadTasksChangeListener.onNewDownloadTaskArrive(downloadInfo);
+            } catch (RemoteException e) {
+                // do nothing
+            }
+        }
+    }
+
+    @Override
+    public void onDownloadTaskRemove(long id) {
+        for (IDownloadTasksChangeListener downloadTasksChangeListener : downloadTasksChangeListeners) {
+            try {
+                downloadTasksChangeListener.onDownloadTaskRemove(id);
+            } catch (RemoteException e) {
+                // do nothing
+            }
+        }
+    }
+
     class LocalDownloadServiceBinder extends Binder implements IDownloadService {
         @Override
         public void registerDownloadCallback(IDownloadCallback callback) {
@@ -191,6 +214,20 @@ public class LocalDownloadService extends Service implements DownloadListener {
         public void removeDownloadCallback(IDownloadCallback callback) {
             synchronized (downloadCallbacks) {
                 downloadCallbacks.remove(callback);
+            }
+        }
+
+        @Override
+        public void registerDownloadTasksChangeListener(IDownloadTasksChangeListener callback) {
+            synchronized (downloadTasksChangeListeners) {
+                downloadTasksChangeListeners.add(callback);
+            }
+        }
+
+        @Override
+        public void removeDownloadTasksChangeListener(IDownloadTasksChangeListener callback) {
+            synchronized (downloadTasksChangeListeners) {
+                downloadTasksChangeListeners.remove(callback);
             }
         }
 

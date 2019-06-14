@@ -3,7 +3,6 @@ package com.lyc.downloader;
 /**
  * Created by Liu Yuchuan on 2019/5/18.
  */
-// TODO: 2019-06-10 use IDownloadService?
 public interface DownloadController {
     void startOrResume(long id, boolean restart);
 

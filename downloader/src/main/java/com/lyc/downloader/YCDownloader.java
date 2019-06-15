@@ -1,6 +1,7 @@
 package com.lyc.downloader;
 
 import android.Manifest;
+import android.Manifest.permission;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Looper;
@@ -52,7 +53,10 @@ public abstract class YCDownloader {
         }
 
         // these permissions is not required but important for downloader
-        String[] importantPermissions = {Manifest.permission.WRITE_EXTERNAL_STORAGE};
+        String[] importantPermissions = {
+                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                permission.READ_EXTERNAL_STORAGE
+        };
         for (String importantPermission : importantPermissions) {
             if (ContextCompat.checkSelfPermission(context, importantPermission) != PackageManager.PERMISSION_GRANTED) {
                 Log.w(TAG, "missing important permission: " + importantPermission);

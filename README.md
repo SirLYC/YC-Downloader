@@ -142,6 +142,36 @@ YCDownloader.queryFinishedDownloadInfoList();
 - set if you want to avoid main thread receive too much progress update message
 - other... 
 
+
+## Important classes
+
+**YCDownloader**: [`com.lyc.downloader.YCDownloader`](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/YCDownloader.java)
+
+Export main apis. 
+
+**DownloadListener**: [`com.lyc.downloader.DownloadListener`](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/DownloadListener.java)
+
+Callback of the download progress and state change of every downloadTask.
+
+**DownloadTasksChangeListener**: [`com.lyc.downloader.DownloadTasksChangeListener`](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/DownloadTasksChangeListener.java)
+
+Callback of the change in downloadTasks: created or removed. It's a good feature to implement a function like eventBus.
+
+**DownloadInfo**: [`com.lyc.downloader.db.DownloadInfo`](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/db/DownloadInfo.java)
+
+Database entity, also `Parcelable` to pass between **multi-process**.
+
+## Permissions
+
+```xml
+<!--required-->
+<uses-permission android:name="android.permission.INTERNET"/>
+<!--not required but important-->
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+```
+
+
 ## Licence
 ```
 MIT License

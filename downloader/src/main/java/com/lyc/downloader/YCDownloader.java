@@ -191,7 +191,17 @@ public abstract class YCDownloader {
      * @param listener the listener inform caller the result of this commit.
      */
     public static void submit(String url, String path, String filename, SubmitListener listener) {
-        serviceManager.submit(url, path, filename, listener);
+        serviceManager.submit(url, path, filename, new ISubmitCallback.Stub() {
+            @Override
+            public void submitSuccess(DownloadInfo downloadInfo) {
+                DownloadExecutors.androidMain.execute(() -> listener.submitSuccess(downloadInfo));
+            }
+
+            @Override
+            public void submitFail(String reason) {
+                DownloadExecutors.androidMain.execute(() -> listener.submitFail(new Exception(reason)));
+            }
+        });
     }
 
     /**

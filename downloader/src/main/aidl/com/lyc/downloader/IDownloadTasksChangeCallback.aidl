@@ -1,9 +1,9 @@
-// IDownloadTasksChangeListener.aidl
+// IDownloadTasksChangeCallback.aidl
 package com.lyc.downloader;
 
 import com.lyc.downloader.db.DownloadInfo;
 
-interface IDownloadTasksChangeListener {
+interface IDownloadTasksChangeCallback {
 
     void onNewDownloadTaskArrive(inout DownloadInfo downloadInfo);
 

@@ -6,7 +6,6 @@ import android.content.ServiceConnection;
 import android.os.IBinder.DeathRecipient;
 import android.os.Looper;
 import android.os.RemoteException;
-import com.lyc.downloader.ISubmitCallback.Stub;
 import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.utils.Logger;
 
@@ -23,12 +22,12 @@ public abstract class BaseServiceManager implements DownloadController, Download
     private static final int MAX_SUPPORT_TASK_COUNT = Runtime.getRuntime().availableProcessors() * 4;
     private static final long WAITING_TIME = TimeUnit.SECONDS.toNanos(6);
     final Context appContext;
-    final DownloadListenerDispatcher downloadListenerDispatcher = new DownloadListenerDispatcher();
+    private final DownloadListenerDispatcher downloadListenerDispatcher = new DownloadListenerDispatcher();
     private final Set<DownloadTasksChangeListener> downloadTasksChangeListeners = new LinkedHashSet<>();
     IDownloadService downloadService;
     final CountDownLatch countDownLatch = new CountDownLatch(1);
     ServiceConnection downloadServiceConnection;
-    final IDownloadTasksChangeListener downloadTasksChangeListener = new IDownloadTasksChangeListener.Stub() {
+    private final IDownloadTasksChangeCallback downloadTasksChangeCallback = new IDownloadTasksChangeCallback.Stub() {
         @Override
         public void onNewDownloadTaskArrive(DownloadInfo downloadInfo) {
             if (!downloadTasksChangeListeners.isEmpty()) {
@@ -179,23 +178,17 @@ public abstract class BaseServiceManager implements DownloadController, Download
     }
 
     @Override
-    public void submit(String url, String path, String filename, SubmitListener listener) {
+    public void submit(String url, String path, String filename, ISubmitCallback callback) {
         DownloadExecutors.command.execute(() -> {
             waitingForConnection();
             try {
-                downloadService.submit(url, path, filename, new Stub() {
-                    @Override
-                    public void submitSuccess(DownloadInfo downloadInfo) {
-                        DownloadExecutors.androidMain.execute(() -> listener.submitSuccess(downloadInfo));
-                    }
-
-                    @Override
-                    public void submitFail(String reason) {
-                        DownloadExecutors.androidMain.execute(() -> listener.submitFail(new Exception(reason)));
-                    }
-                });
+                downloadService.submit(url, path, filename, callback);
             } catch (RemoteException e) {
-                DownloadExecutors.androidMain.execute(() -> listener.submitFail(e));
+                try {
+                    callback.submitFail(e.getMessage());
+                } catch (RemoteException e1) {
+                    Logger.e("BaseServiceManager", "submitFail", e1);
+                }
             }
         });
     }
@@ -426,7 +419,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
         }
 
         try {
-            downloadService.registerDownloadTasksChangeListener(downloadTasksChangeListener);
+            downloadService.registerDownloadTasksChangeCallback(downloadTasksChangeCallback);
         } catch (RemoteException e) {
             Logger.e("BaseServiceManager", "registerDownloadTasksChangeListener", e);
         }

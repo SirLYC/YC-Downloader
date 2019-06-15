@@ -3,6 +3,7 @@ package com.lyc.downloader;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
+import android.os.RemoteException;
 import androidx.annotation.WorkerThread;
 import androidx.collection.LongSparseArray;
 import com.lyc.downloader.db.DaoMaster;
@@ -17,7 +18,6 @@ import okhttp3.OkHttpClient.Builder;
 import okhttp3.logging.HttpLoggingInterceptor;
 import okhttp3.logging.HttpLoggingInterceptor.Level;
 
-import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -25,6 +25,8 @@ import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static com.lyc.downloader.DownloadTask.*;
 
@@ -38,6 +40,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     static final String DB_NAME = "yuchuan_downloader_db";
     @SuppressLint("StaticFieldLeak")
     private volatile static DownloadManager instance;
+    private static final String TAG = "DownloadManager";
     // for http
     private final OkHttpClient client;
     final DaoSession daoSession;
@@ -48,9 +51,10 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     private final Deque<Long> waitingTasksId = new UniqueDequeue<>();
     private final Deque<Long> errorTasksId = new UniqueDequeue<>();
     private final Deque<Long> pausingTasksId = new UniqueDequeue<>();
-    // avoid memory leak
-    private WeakReference<DownloadListener> userDownloadListener;
-    DownloadTasksChangeListener downloadTasksChangeListener;
+    private final Lock downloadCallbackSetLock = new ReentrantLock();
+    private final Lock downloadTasksChangeCallbackSetLock = new ReentrantLock();
+    private IDownloadCallback downloadCallback;
+    private IDownloadTasksChangeCallback downloadTasksChangeCallback;
     private int maxRunningTask = 4;
     private volatile boolean avoidFrameDrop = true;
 
@@ -205,18 +209,19 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
 
     @Override
     public void onPreparing(long id) {
-        DownloadExecutors.androidMain.execute(() -> {
-            if (userDownloadListener != null) {
-                DownloadListener downloadListener = userDownloadListener.get();
-                if (downloadListener != null) {
-                    downloadListener.onPreparing(id);
-                }
+        IDownloadCallback downloadCallback = this.downloadCallback;
+        if (downloadCallback != null) {
+            try {
+                downloadCallback.onPreparing(id);
+            } catch (RemoteException e) {
+                Logger.e(TAG, "onPreparing", e);
             }
-        });
+        }
     }
 
     @Override
     public void onProgressUpdate(long id, long total, long cur, double bps) {
+        IDownloadCallback downloadCallback = this.downloadCallback;
         DownloadExecutors.message.execute(() -> {
             boolean shouldSend = false;
             long currentTime = System.nanoTime();
@@ -231,46 +236,45 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
 
             if (shouldSend) {
                 lastSendMessageTime.put(id, currentTime);
-                DownloadExecutors.androidMain.execute(() -> {
-                    if (userDownloadListener != null) {
-                        DownloadListener downloadListener = userDownloadListener.get();
-                        if (downloadListener != null) {
-                            downloadListener.onProgressUpdate(id, total, cur, bps);
-                        }
+                if (downloadCallback != null) {
+                    try {
+                        downloadCallback.onProgressUpdate(id, total, cur, bps);
+                    } catch (RemoteException e) {
+                        Logger.e(TAG, "onProgressUpdate", e);
                     }
-                });
-            }
-        });
-    }
-
-    @Override
-    public void onUpdateInfo(DownloadInfo downloadInfo) {
-        DownloadExecutors.androidMain.execute(() -> {
-            if (userDownloadListener != null) {
-                DownloadListener downloadListener = userDownloadListener.get();
-                if (downloadListener != null) {
-                    downloadListener.onUpdateInfo(downloadInfo);
                 }
             }
         });
     }
 
     @Override
+    public void onUpdateInfo(DownloadInfo downloadInfo) {
+        IDownloadCallback downloadCallback = this.downloadCallback;
+        if (downloadCallback != null) {
+            try {
+                downloadCallback.onUpdateInfo(downloadInfo);
+            } catch (RemoteException e) {
+                Logger.e(TAG, "onUpdateInfo", e);
+            }
+        }
+    }
+
+    @Override
     public void onDownloadError(long id, int code, boolean fatal) {
+        IDownloadCallback downloadCallback = this.downloadCallback;
         DownloadExecutors.message.execute(() -> {
             lastSendMessageTime.remove(id);
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
             if (runningTasksId.remove(id) | pausingTasksId.remove(id) | waitingTasksId.remove(id)) {
                 errorTasksId.add(id);
-                DownloadExecutors.androidMain.execute(() -> {
-                    if (userDownloadListener != null) {
-                        DownloadListener downloadListener = userDownloadListener.get();
-                        if (downloadListener != null) {
-                            downloadListener.onDownloadError(id, code, fatal);
-                        }
+                if (downloadCallback != null) {
+                    try {
+                        downloadCallback.onDownloadError(id, code, fatal);
+                    } catch (RemoteException e) {
+                        Logger.e(TAG, "onDownloadError", e);
                     }
-                });
+                }
                 schedule();
             }
         });
@@ -278,56 +282,58 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
 
     @Override
     public void onDownloadStart(DownloadInfo downloadInfo) {
+        IDownloadCallback downloadCallback = this.downloadCallback;
         DownloadExecutors.message.execute(() -> {
             if (!runningTasksId.contains(downloadInfo.getId())) {
                 runningTasksId.offer(downloadInfo.getId());
             }
-            DownloadExecutors.androidMain.execute(() -> {
-                if (userDownloadListener != null) {
-                    DownloadListener downloadListener = userDownloadListener.get();
-                    if (downloadListener != null) {
-                        downloadListener.onDownloadStart(downloadInfo);
-                    }
+            if (downloadCallback != null) {
+                try {
+                    downloadCallback.onDownloadStart(downloadInfo);
+                } catch (RemoteException e) {
+                    Logger.e(TAG, "onDownloadStart", e);
                 }
-            });
+            }
         });
     }
 
     @Override
     public void onDownloadPausing(long id) {
-        DownloadExecutors.androidMain.execute(() -> {
-            if (userDownloadListener != null) {
-                DownloadListener downloadListener = userDownloadListener.get();
-                if (downloadListener != null) {
-                    downloadListener.onDownloadPausing(id);
-                }
+        IDownloadCallback downloadCallback = this.downloadCallback;
+        if (downloadCallback != null) {
+            try {
+                downloadCallback.onDownloadPausing(id);
+            } catch (RemoteException e) {
+                Logger.e(TAG, "onDownloadPausing", e);
             }
-        });
+        }
     }
 
     @Override
     public void onDownloadPaused(long id) {
+        IDownloadCallback downloadCallback = this.downloadCallback;
         DownloadExecutors.message.execute(() -> {
             DownloadTask downloadTask = taskTable.get(id);
             lastSendMessageTime.remove(id);
             if (downloadTask == null) return;
             if (runningTasksId.remove(id) | waitingTasksId.remove(id)) {
                 pausingTasksId.add(id);
-                DownloadExecutors.androidMain.execute(() -> {
-                    if (userDownloadListener != null) {
-                        DownloadListener downloadListener = userDownloadListener.get();
-                        if (downloadListener != null) {
-                            downloadListener.onDownloadPaused(id);
-                        }
+                if (downloadCallback != null) {
+                    try {
+                        downloadCallback.onDownloadPaused(id);
+                    } catch (RemoteException e) {
+                        Logger.e(TAG, "onDownloadPaused", e);
                     }
-                });
+                }
                 schedule();
             }
         });
+
     }
 
     @Override
     public void onDownloadCanceled(long id) {
+        IDownloadCallback downloadCallback = this.downloadCallback;
         DownloadExecutors.message.execute(() -> {
             lastSendMessageTime.remove(id);
             DownloadTask downloadTask = taskTable.get(id);
@@ -336,14 +342,13 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                     errorTasksId.remove(id) | waitingTasksId.remove(id)) {
                 taskTable.remove(id);
                 Logger.d("DownloadManager", "remove task#" + id + " running tasks = " + runningTasksId.size());
-                DownloadExecutors.androidMain.execute(() -> {
-                    if (userDownloadListener != null) {
-                        DownloadListener downloadListener = userDownloadListener.get();
-                        if (downloadListener != null) {
-                            downloadListener.onDownloadCanceled(id);
-                        }
+                if (downloadCallback != null) {
+                    try {
+                        downloadCallback.onDownloadCanceled(id);
+                    } catch (RemoteException e) {
+                        Logger.e(TAG, "onDownloadCanceled", e);
                     }
-                });
+                }
                 schedule();
             }
         });
@@ -351,6 +356,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
 
     @Override
     public void onDownloadTaskWait(long id) {
+        IDownloadCallback downloadCallback = this.downloadCallback;
         DownloadExecutors.message.execute(() -> {
             lastSendMessageTime.remove(id);
             DownloadTask downloadTask = taskTable.get(id);
@@ -359,14 +365,13 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                 pausingTasksId.remove(id);
                 errorTasksId.remove(id);
                 waitingTasksId.add(id);
-                DownloadExecutors.androidMain.execute(() -> {
-                    if (userDownloadListener != null) {
-                        DownloadListener downloadListener = userDownloadListener.get();
-                        if (downloadListener != null) {
-                            downloadListener.onDownloadTaskWait(id);
-                        }
+                try {
+                    if (downloadCallback != null) {
+                        downloadCallback.onDownloadTaskWait(id);
                     }
-                });
+                } catch (RemoteException e) {
+                    Logger.e(TAG, "onDownloadTaskWait", e);
+                }
                 schedule();
             }
         });
@@ -374,26 +379,26 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
 
     @Override
     public void onDownloadFinished(DownloadInfo downloadInfo) {
+        IDownloadCallback downloadCallback = this.downloadCallback;
         DownloadExecutors.message.execute(() -> {
             long id = downloadInfo.getId();
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
             if (runningTasksId.remove(id) | waitingTasksId.remove(id) | pausingTasksId.remove(id) | errorTasksId.remove(id)) {
-                DownloadExecutors.androidMain.execute(() -> {
-                    if (userDownloadListener != null) {
-                        DownloadListener downloadListener = userDownloadListener.get();
-                        if (downloadListener != null) {
-                            downloadListener.onDownloadFinished(downloadInfo);
-                        }
+                try {
+                    if (downloadCallback != null) {
+                        downloadCallback.onDownloadFinished(downloadInfo);
                     }
-                });
+                } catch (RemoteException e) {
+                    Logger.e(TAG, "onDownloadFinished", e);
+                }
                 schedule();
             }
         });
     }
 
     @WorkerThread
-    private void submitInner(String url, String path, String filename, SubmitListener listener) {
+    private void submitInner(String url, String path, String filename, ISubmitCallback listener) {
         DownloadInfo downloadInfo = new DownloadInfo(null, url, path, filename, true, WAITING,
                 0, 0, null, new Date(), null, null);
         try {
@@ -404,20 +409,34 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                     DownloadTask downloadTask = new DownloadTask(downloadInfo, client, this);
                     taskTable.put(insertId, downloadTask);
                     waitingTasksId.add(insertId);
-                    DownloadExecutors.androidMain.execute(() -> listener.submitSuccess(downloadInfo));
-                    // all DownloadTasksChangeListener runs on message thread
-                    DownloadExecutors.message.execute(() -> {
-                        if (downloadTasksChangeListener != null) {
-                            downloadTasksChangeListener.onNewDownloadTaskArrive(downloadInfo);
+                    try {
+                        listener.submitSuccess(downloadInfo);
+                    } catch (RemoteException e) {
+                        Logger.e(TAG, "submitSuccess", e);
+                    }
+                    IDownloadTasksChangeCallback downloadTasksChangeCallback = this.downloadTasksChangeCallback;
+                    if (downloadTasksChangeCallback != null) {
+                        try {
+                            downloadTasksChangeCallback.onNewDownloadTaskArrive(downloadInfo);
+                        } catch (RemoteException e) {
+                            Logger.e(TAG, "onNewDownloadTaskArrive", e);
                         }
-                    });
+                    }
                     schedule();
                 } else {
-                    DownloadExecutors.androidMain.execute(() -> listener.submitFail(new Exception("创建任务失败")));
+                    try {
+                        listener.submitFail("创建任务失败");
+                    } catch (RemoteException e) {
+                        Logger.e(TAG, "submitFail", e);
+                    }
                 }
             });
         } catch (Exception e) {
-            DownloadExecutors.androidMain.execute(() -> listener.submitFail(e));
+            try {
+                listener.submitFail(e.getLocalizedMessage());
+            } catch (RemoteException e1) {
+                Logger.e(TAG, "submitFail", e1);
+            }
         }
     }
 
@@ -473,8 +492,13 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
             downloadTask.cancel();
-            if (downloadTasksChangeListener != null) {
-                downloadTasksChangeListener.onDownloadTaskRemove(id);
+            IDownloadTasksChangeCallback downloadTasksChangeCallback = this.downloadTasksChangeCallback;
+            if (downloadTasksChangeCallback != null) {
+                try {
+                    downloadTasksChangeCallback.onDownloadTaskRemove(id);
+                } catch (RemoteException e) {
+                    Logger.e(TAG, "onDownloadTaskRemove", e);
+                }
             }
         });
     }
@@ -484,15 +508,15 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
      * @param url      download url; must started with http/https
      * @param path     nonnull; parent directory of the file
      * @param filename self-defined filename; if null, it will be parsed by url or a pivot request by downloadManager
-     * @param listener listener to inform submit success or fail
+     * @param callback listener to inform submit success or fail
      */
     @Override
-    public void submit(String url, String path, String filename, SubmitListener listener) {
+    public void submit(String url, String path, String filename, ISubmitCallback callback) {
         waitForRecovering();
         if (path == null) {
             throw new NullPointerException("path cannot be null");
         }
-        DownloadExecutors.io.execute(() -> submitInner(url, path, filename, listener));
+        DownloadExecutors.io.execute(() -> submitInner(url, path, filename, callback));
     }
 
     @Override
@@ -508,8 +532,13 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                 errorTasksId.remove(id);
                 pausingTasksId.remove(id);
                 downloadTask.delete(deleteFile);
-                if (downloadTasksChangeListener != null) {
-                    downloadTasksChangeListener.onDownloadTaskRemove(id);
+                IDownloadTasksChangeCallback downloadTasksChangeCallback = this.downloadTasksChangeCallback;
+                if (downloadTasksChangeCallback != null) {
+                    try {
+                        downloadTasksChangeCallback.onDownloadTaskRemove(id);
+                    } catch (RemoteException e) {
+                        Logger.e(TAG, "onDownloadTaskRemove", e);
+                    }
                 }
             } else {
                 Logger.w("DownloadManager", "delete a task that is not present in DownloadManager! find in db. id = " + id);
@@ -563,14 +592,6 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
         this.sendMessageIntervalNanos = time;
     }
 
-    void setUserDownloadListener(DownloadListener downloadListener) {
-        if (downloadListener == null) return;
-        if (userDownloadListener != null) {
-            userDownloadListener.clear();
-        }
-        userDownloadListener = new WeakReference<>(downloadListener);
-    }
-
     @Override
     public DownloadInfo queryDownloadInfo(long id) {
         return infoTable.get(id);
@@ -618,5 +639,23 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                 .orderDesc(DownloadInfoDao.Properties.CreatedTime)
                 .build()
                 .list();
+    }
+
+    void setDownloadCallback(IDownloadCallback callback) {
+        try {
+            downloadCallbackSetLock.lock();
+            this.downloadCallback = callback;
+        } finally {
+            downloadCallbackSetLock.unlock();
+        }
+    }
+
+    void setDownloadTasksChangeCallback(IDownloadTasksChangeCallback callback) {
+        try {
+            downloadTasksChangeCallbackSetLock.lock();
+            downloadTasksChangeCallback = callback;
+        } finally {
+            downloadTasksChangeCallbackSetLock.unlock();
+        }
     }
 }

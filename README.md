@@ -129,11 +129,11 @@ YCDownloader.unregisterDownloadListener(downloadListener);
 // attention: these methods should be called in worker thread
 // query by id
 YCDownloader.queryDownloadInfo(long id);
-// state != CANCELED && state != FINISHED
+// state != CANCELED && state != FINISH
 YCDownloader.queryActiveDownloadInfoList();
 // state == DELETED
 YCDownloader.queryDeletedDownloadInfoList();
-// state == FINISHED
+// state == FINISH
 YCDownloader.queryFinishedDownloadInfoList();
 ```
 

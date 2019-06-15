@@ -3,8 +3,6 @@ package com.lyc.downloader;
 import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
-import android.os.RemoteCallbackList;
-import android.os.RemoteException;
 import androidx.annotation.Nullable;
 import com.lyc.downloader.db.DownloadInfo;
 import com.lyc.downloader.utils.Logger;
@@ -16,62 +14,37 @@ import java.util.List;
  * @date 2019-05-10
  * @email kevinliu.sir@qq.com
  */
-public class RemoteDownloadService extends Service implements DownloadListener, DownloadTasksChangeListener {
+public class RemoteDownloadService extends Service {
 
     public static final String TAG = "RemoteDownloadService";
     private static DownloadManager downloadManager;
-    private final RemoteCallbackList<IDownloadCallback> downloadCallbackList = new RemoteCallbackList<>();
-    private final RemoteCallbackList<IDownloadTasksChangeListener> downloadTasksChangeListenerCallbackList =
-            new RemoteCallbackList<>();
 
     private final IDownloadService.Stub downloadService = new IDownloadService.Stub() {
         @Override
         public void registerDownloadCallback(IDownloadCallback callback) {
-            downloadCallbackList.register(callback);
+            downloadManager.setDownloadCallback(callback);
         }
 
         @Override
-        public void removeDownloadCallback(IDownloadCallback callback) {
-            downloadCallbackList.unregister(callback);
+        public void unregisterDownloadCallback() {
+            downloadManager.setDownloadCallback(null);
+        }
+
+
+        @Override
+        public void registerDownloadTasksChangeCallback(IDownloadTasksChangeCallback callback) {
+            downloadManager.setDownloadTasksChangeCallback(callback);
         }
 
         @Override
-        public void registerDownloadTasksChangeListener(IDownloadTasksChangeListener callback) {
-            downloadTasksChangeListenerCallbackList.register(callback);
-        }
-
-        @Override
-        public void removeDownloadTasksChangeListener(IDownloadTasksChangeListener callback) {
-            downloadTasksChangeListenerCallbackList.unregister(callback);
+        public void unregisterDownloadTasksChangeCallback() {
+            downloadManager.setDownloadTasksChangeCallback(null);
         }
 
         @Override
         public void submit(String url, String path, String filename, ISubmitCallback callback) {
             Logger.d("RemoteDownloadService", "submit " + url);
-            downloadManager.submit(url, path, filename, new SubmitListener() {
-                @Override
-                public void submitSuccess(DownloadInfo downloadInfo) {
-                    try {
-                        Logger.d("RemoteDownloadService", "submit " + url);
-                        callback.submitSuccess(downloadInfo);
-                    } catch (RemoteException e) {
-                        try {
-                            callback.submitFail(e.getMessage());
-                        } catch (RemoteException e1) {
-                            Logger.d("RemoteDownloadService", "cannot call submit fail", e);
-                        }
-                    }
-                }
-
-                @Override
-                public void submitFail(Exception e) {
-                    try {
-                        callback.submitFail(e.getMessage());
-                    } catch (RemoteException ex) {
-                        Logger.e(TAG, "cannot report submit fail: ", ex);
-                    }
-                }
-            });
+            downloadManager.submit(url, path, filename, callback);
         }
 
         @Override
@@ -160,178 +133,11 @@ public class RemoteDownloadService extends Service implements DownloadListener, 
         super.onCreate();
         DownloadManager.init(getApplicationContext());
         downloadManager = DownloadManager.instance();
-        downloadManager.setUserDownloadListener(this);
     }
 
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
         return downloadService.asBinder();
-    }
-
-    @Override
-    public void onPreparing(long id) {
-        int n = downloadCallbackList.beginBroadcast();
-        for (int i = 0; i < n; i++) {
-            IDownloadCallback broadcastItem = downloadCallbackList.getBroadcastItem(i);
-            try {
-                broadcastItem.onPreparing(id);
-            } catch (RemoteException e) {
-                Logger.e(TAG, "send prepare event for task#" + id + " failed.", e);
-            }
-        }
-        downloadCallbackList.finishBroadcast();
-    }
-
-    @Override
-    public void onProgressUpdate(long id, long total, long cur, double bps) {
-        int n = downloadCallbackList.beginBroadcast();
-        for (int i = 0; i < n; i++) {
-            IDownloadCallback broadcastItem = downloadCallbackList.getBroadcastItem(i);
-            try {
-                broadcastItem.onProgressUpdate(id, total, cur, bps);
-            } catch (RemoteException e) {
-                Logger.e(TAG, "send progressUpdate event for task#" + id + " failed.", e);
-            }
-        }
-        downloadCallbackList.finishBroadcast();
-    }
-
-    @Override
-    public void onUpdateInfo(DownloadInfo downloadInfo) {
-        int n = downloadCallbackList.beginBroadcast();
-        for (int i = 0; i < n; i++) {
-            IDownloadCallback broadcastItem = downloadCallbackList.getBroadcastItem(i);
-            try {
-                broadcastItem.onUpdateInfo(downloadInfo);
-            } catch (RemoteException e) {
-                Logger.e(TAG, "send updateInfo event for task#" + downloadInfo.getId() + " failed.", e);
-            }
-        }
-        downloadCallbackList.finishBroadcast();
-    }
-
-    @Override
-    public void onDownloadError(long id, int code, boolean fatal) {
-        int n = downloadCallbackList.beginBroadcast();
-        for (int i = 0; i < n; i++) {
-            IDownloadCallback broadcastItem = downloadCallbackList.getBroadcastItem(i);
-            try {
-                broadcastItem.onDownloadError(id, code, fatal);
-            } catch (RemoteException e) {
-                Logger.e(TAG, "send downloadError event for task#" + id + " failed.", e);
-            }
-        }
-        downloadCallbackList.finishBroadcast();
-    }
-
-    @Override
-    public void onDownloadStart(DownloadInfo downloadInfo) {
-        int n = downloadCallbackList.beginBroadcast();
-        for (int i = 0; i < n; i++) {
-            IDownloadCallback broadcastItem = downloadCallbackList.getBroadcastItem(i);
-            try {
-                broadcastItem.onDownloadStart(downloadInfo);
-            } catch (RemoteException e) {
-                Logger.e(TAG, "send downloadStart event for task#" + downloadInfo.getId() + " failed.", e);
-            }
-        }
-        downloadCallbackList.finishBroadcast();
-    }
-
-    @Override
-    public void onDownloadPausing(long id) {
-        int n = downloadCallbackList.beginBroadcast();
-        for (int i = 0; i < n; i++) {
-            IDownloadCallback broadcastItem = downloadCallbackList.getBroadcastItem(i);
-            try {
-                broadcastItem.onDownloadPausing(id);
-            } catch (RemoteException e) {
-                Logger.e(TAG, "send downloadPausing event for task#" + id + " failed.", e);
-            }
-        }
-        downloadCallbackList.finishBroadcast();
-    }
-
-    @Override
-    public void onDownloadPaused(long id) {
-        int n = downloadCallbackList.beginBroadcast();
-        for (int i = 0; i < n; i++) {
-            IDownloadCallback broadcastItem = downloadCallbackList.getBroadcastItem(i);
-            try {
-                broadcastItem.onDownloadPaused(id);
-            } catch (RemoteException e) {
-                Logger.e(TAG, "send downloadPaused event for task#" + id + " failed.", e);
-            }
-        }
-        downloadCallbackList.finishBroadcast();
-    }
-
-    @Override
-    public void onDownloadTaskWait(long id) {
-        int n = downloadCallbackList.beginBroadcast();
-        for (int i = 0; i < n; i++) {
-            IDownloadCallback broadcastItem = downloadCallbackList.getBroadcastItem(i);
-            try {
-                broadcastItem.onDownloadTaskWait(id);
-            } catch (RemoteException e) {
-                Logger.e(TAG, "send downloadTaskWait event for task#" + id + " failed.", e);
-            }
-        }
-        downloadCallbackList.finishBroadcast();
-    }
-
-    @Override
-    public void onDownloadCanceled(long id) {
-        int n = downloadCallbackList.beginBroadcast();
-        for (int i = 0; i < n; i++) {
-            IDownloadCallback broadcastItem = downloadCallbackList.getBroadcastItem(i);
-            try {
-                broadcastItem.onDownloadCanceled(id);
-            } catch (RemoteException e) {
-                Logger.e(TAG, "send downloadCancel event for task#" + id + " failed.", e);
-            }
-        }
-        downloadCallbackList.finishBroadcast();
-    }
-
-    @Override
-    public void onDownloadFinished(DownloadInfo downloadInfo) {
-        int n = downloadCallbackList.beginBroadcast();
-        for (int i = 0; i < n; i++) {
-            IDownloadCallback broadcastItem = downloadCallbackList.getBroadcastItem(i);
-            try {
-                broadcastItem.onDownloadFinished(downloadInfo);
-            } catch (RemoteException e) {
-                Logger.e(TAG, "send downloadFinished event for task#" + downloadInfo.getId() + " failed.", e);
-            }
-        }
-        downloadCallbackList.finishBroadcast();
-    }
-
-    @Override
-    public void onNewDownloadTaskArrive(DownloadInfo downloadInfo) {
-        int n = downloadTasksChangeListenerCallbackList.beginBroadcast();
-        for (int i = 0; i < n; i++) {
-            IDownloadTasksChangeListener broadcastItem = downloadTasksChangeListenerCallbackList.getBroadcastItem(i);
-            try {
-                broadcastItem.onNewDownloadTaskArrive(downloadInfo);
-            } catch (RemoteException e) {
-                Logger.e(TAG, "onNewDownloadTaskArrive", e);
-            }
-        }
-    }
-
-    @Override
-    public void onDownloadTaskRemove(long id) {
-        int n = downloadTasksChangeListenerCallbackList.beginBroadcast();
-        for (int i = 0; i < n; i++) {
-            IDownloadTasksChangeListener broadcastItem = downloadTasksChangeListenerCallbackList.getBroadcastItem(i);
-            try {
-                broadcastItem.onDownloadTaskRemove(id);
-            } catch (RemoteException e) {
-                Logger.e(TAG, "onDownloadTaskRemove", e);
-            }
-        }
     }
 }

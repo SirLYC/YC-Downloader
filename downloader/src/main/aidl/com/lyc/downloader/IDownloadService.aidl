@@ -3,18 +3,18 @@ package com.lyc.downloader;
 
 import com.lyc.downloader.IDownloadCallback;
 import com.lyc.downloader.ISubmitCallback;
-import com.lyc.downloader.IDownloadTasksChangeListener;
+import com.lyc.downloader.IDownloadTasksChangeCallback;
 import com.lyc.downloader.db.DownloadInfo;
 
 interface IDownloadService {
 
     void registerDownloadCallback(IDownloadCallback callback);
 
-    void removeDownloadCallback(IDownloadCallback callback);
+    void unregisterDownloadCallback();
 
-    void registerDownloadTasksChangeListener(IDownloadTasksChangeListener callback);
+    void registerDownloadTasksChangeCallback(IDownloadTasksChangeCallback callback);
 
-    void removeDownloadTasksChangeListener(IDownloadTasksChangeListener callback);
+    void unregisterDownloadTasksChangeCallback();
 
     void submit(String url, String path, String filename, ISubmitCallback callback);
 

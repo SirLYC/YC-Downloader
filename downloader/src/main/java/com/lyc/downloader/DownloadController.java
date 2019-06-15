@@ -14,7 +14,7 @@ public interface DownloadController {
 
     void cancel(long id);
 
-    void submit(String url, String path, String filename, SubmitListener listener);
+    void submit(String url, String path, String filename, ISubmitCallback callback);
 
     void delete(long id, boolean deleteFile);
 

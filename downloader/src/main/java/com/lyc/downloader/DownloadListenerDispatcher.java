@@ -89,7 +89,7 @@ public class DownloadListenerDispatcher extends IDownloadCallback.Stub {
     }
 
     @Override
-    public void onDownloadPreparing(long id) {
+    public void onDownloadConnecting(long id) {
         Collection<DownloadListener> downloadListeners = getDispatchListeners(id);
         if (downloadListeners.isEmpty()) {
             return;

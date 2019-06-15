@@ -5,7 +5,7 @@ import com.lyc.downloader.db.DownloadInfo;
 
 interface IDownloadCallback {
 
-    void onDownloadPreparing(long id);
+    void onDownloadConnecting(long id);
 
     void onDownloadProgressUpdate(long id, long total, long cur, double bps);
 

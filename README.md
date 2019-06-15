@@ -9,7 +9,7 @@ A multi-thread downloader which supports for HTTP.
 - [x] multi-thread download
 - [x] download thread and disk-io thread separated
 - [x] multi download task
-- [x] support for HTTP (resume from break-poAint)
+- [x] support for HTTP (resume from break-point)
 - [x] message control to avoid ui frame drops 
 - [x] multi-process support
 - [ ] other protocol download maybe...
@@ -29,7 +29,7 @@ A multi-thread downloader which supports for HTTP.
 
 Add it in your root build.gradle at the end of repositories:
 
-```
+``` groovy
 allprojects {
     repositories {
         ...
@@ -40,7 +40,7 @@ allprojects {
 
 **Step 2.** Add the dependency
 
-```
+``` groovy
 dependencies {
     implementation 'com.github.SirLYC:Yuchuan-Downloader:latest.release'
 }
@@ -52,36 +52,14 @@ dependencies {
 
 In `manifest`:
 
-```
+``` xml
 <!--internet access is needed-->
 <uses-permission android:name="android.permission.INTERNET"/>
 ```
 
 It's recommended to install in `Application` class
 
-``` kotlin
-class App : Application() {
-    override fun onCreate() {
-        super.onCreate()
-        // multi process
-        YCDownloader.install(this, true)
-        // single process
-        //        YCDownloader.install(this, false);
-        // or
-        //        YCDownloader.install(this);
-    }
-}
-```
-
-Then Just learn apis!
-
-## Main API
-
-You can check all apis in file [YCDownloader.java](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/YCDownloader.java)
-
-**install**
-```
-// it is recommended to install it in your Application
+``` java
 public class App extends Application {
     @Override
     public void onCreate() {
@@ -96,8 +74,15 @@ public class App extends Application {
 }
 ```
 
+Then Just learn apis!
+
+## Main API
+
+You can check all apis in file [YCDownloader.java](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/YCDownloader.java)
+
+
 **start download**
-```
+``` java
 private SubmitListener submitListener = new SubmitListener() {
         @Override
         public void submitSuccess(DownloadInfo downloadInfo) {
@@ -115,7 +100,7 @@ YCDownloader.submit(url, path, filename, submitListener);
 ``` 
 
 **listen to download progress or state change**
-```
+``` java
 DownloadListener downloadListener = ...;
 YCDownloader.registerDownloadListener(downloadListener);
 
@@ -125,7 +110,7 @@ YCDownloader.unregisterDownloadListener(downloadListener);
 ```
 
 **query download info**
-```
+``` java
 // attention: these methods should be called in worker thread
 // query by id
 YCDownloader.queryDownloadInfo(long id);

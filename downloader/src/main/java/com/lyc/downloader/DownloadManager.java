@@ -205,7 +205,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
         IDownloadCallback downloadCallback = this.downloadCallback;
         if (downloadCallback != null) {
             try {
-                downloadCallback.onDownloadPreparing(id);
+                downloadCallback.onDownloadConnecting(id);
             } catch (RemoteException e) {
                 Logger.e(TAG, "onDownloadConnecting", e);
             }

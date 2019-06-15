@@ -49,11 +49,7 @@ class DownloadItemViewBinder(
 
         internal fun bind(item: DownloadItem) {
             this.item = item
-            if (item.filename != null) {
-                name.text = item.filename
-            } else {
-                name.text = item.url
-            }
+            name.text = item.filename
             val progress: Int
             val cur = item.downloadedSize
             val total = item.totalSize.toDouble()
@@ -72,7 +68,7 @@ class DownloadItemViewBinder(
             downloadProgressBar.progress = progress
 
             when (item.downloadState) {
-                PENDING, PREPARING -> stateString = "$stateString | 连接中"
+                PENDING, CONNECTING -> stateString = "$stateString | 连接中"
                 RUNNING -> stateString = stateString + " | " + DownloadStringUtil.bpsToString(item.bps)
                 PAUSING -> stateString = "$stateString | 正在暂停"
                 PAUSED -> stateString = "$stateString | 已暂停"
@@ -89,7 +85,7 @@ class DownloadItemViewBinder(
 
             downloadProgressBar.isEnabled =
                 downloadState == PAUSED || downloadState == ERROR || downloadState == FATAL_ERROR ||
-                        downloadState == RUNNING || downloadState == PREPARING || downloadState == WAITING
+                        downloadState == RUNNING || downloadState == CONNECTING || downloadState == WAITING
             state.text = stateString
             if (item.downloadState == FINISH) {
                 downloadProgressBar.visibility = View.GONE
@@ -97,7 +93,7 @@ class DownloadItemViewBinder(
                 downloadProgressBar.visibility = View.VISIBLE
                 downloadProgressBar.active = (downloadState == PENDING
                         || downloadState == RUNNING
-                        || downloadState == PREPARING
+                        || downloadState == CONNECTING
                         || downloadState == WAITING)
             }
         }
@@ -108,7 +104,7 @@ class DownloadItemViewBinder(
                 if (v.id == R.id.dpb) {
                     if (state == PAUSED || state == ERROR || state == FATAL_ERROR) {
                         onItemButtonClickListener.startItem(it)
-                    } else if (state == RUNNING || state == PREPARING || state == WAITING) {
+                    } else if (state == RUNNING || state == CONNECTING || state == WAITING) {
                         onItemButtonClickListener.pauseItem(it)
                     }
                 }

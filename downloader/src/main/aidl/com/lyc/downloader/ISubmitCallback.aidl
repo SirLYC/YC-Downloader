@@ -5,7 +5,7 @@ import com.lyc.downloader.db.DownloadInfo;
 
 interface ISubmitCallback {
 
-    void submitSuccess(inout DownloadInfo downloadInfo);
+    void submitSuccess(in DownloadInfo downloadInfo);
 
     void submitFail(String reason);
 }

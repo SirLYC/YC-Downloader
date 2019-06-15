@@ -5,23 +5,23 @@ import com.lyc.downloader.db.DownloadInfo;
 
 interface IDownloadCallback {
 
-    void onPreparing(long id);
+    void onDownloadPreparing(long id);
 
-    void onProgressUpdate(long id, long total, long cur, double bps);
+    void onDownloadProgressUpdate(long id, long total, long cur, double bps);
 
-    void onUpdateInfo(inout DownloadInfo downloadInfo);
+    void onDownloadUpdateInfo(in DownloadInfo downloadInfo);
 
     void onDownloadError(long id, int code, boolean fatal);
 
-    void onDownloadStart(inout DownloadInfo downloadInfo);
+    void onDownloadStart(in DownloadInfo downloadInfo);
 
     void onDownloadPausing(long id);
 
     void onDownloadPaused(long id);
 
-    void onDownloadTaskWait(long id);
+    void onDownloadWaiting(long id);
 
     void onDownloadCanceled(long id);
 
-    void onDownloadFinished(inout DownloadInfo downloadInfo);
+    void onDownloadFinished(in DownloadInfo downloadInfo);
 }

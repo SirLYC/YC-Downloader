@@ -1,14 +1,17 @@
 package com.lyc.yuchuan_downloader
 
+import android.util.Log
 import androidx.collection.LongSparseArray
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.recyclerview.widget.ListUpdateCallback
 import com.lyc.downloader.DownloadListener
 import com.lyc.downloader.DownloadTask.*
+import com.lyc.downloader.DownloadTasksChangeListener
 import com.lyc.downloader.SubmitListener
 import com.lyc.downloader.YCDownloader
 import com.lyc.downloader.db.DownloadInfo
+import com.lyc.downloader.utils.DownloadStringUtil
 import com.lyc.yuchuan_downloader.util.ObservableList
 import java.util.*
 
@@ -17,9 +20,45 @@ import java.util.*
  * @date 2019-04-23
  * @email kevinliu.sir@qq.com
  */
-class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
+class MainViewModel : ViewModel(), SubmitListener, DownloadListener, DownloadTasksChangeListener {
+    override fun onNewDownloadTaskArrive(downloadInfo: DownloadInfo) {
+        Log.d("MainViewModel", "new download test arrive: $downloadInfo")
+        if (idToItem[downloadInfo.id] == null) {
+            when (downloadInfo.downloadItemState) {
+                FINISH -> {
+                    downloadInfoToItem(downloadInfo).let {
+                        idToItem.put(downloadInfo.id, it)
+                        finishedItemList.add(0, it)
+                    }
+                }
+
+                CANCELED -> {
+                    // do nothing
+                }
+
+                else -> {
+                    downloadInfoToItem(downloadInfo).let { newAddItem ->
+                        idToItem.put(downloadInfo.id, newAddItem)
+                        var index = downloadItemList.indexOfFirst { item ->
+                            item.createdTime >= newAddItem.createdTime
+                        }
+
+                        if (index < 0 || index > downloadItemList.size) {
+                            index = downloadItemList.size
+                        }
+                        downloadItemList.add(index, newAddItem)
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onDownloadTaskRemove(id: Long) {
+        Log.d("MainViewModel", "download task removed: ${idToItem[id]}")
+    }
+
     internal val itemList = ObservableList(ArrayList<Any>())
-    private val downloadItemObservableList = ObservableList(ArrayList<DownloadItem>())
+    private val downloadItemList = ObservableList(ArrayList<DownloadItem>())
     private val finishedItemList = ObservableList(ArrayList<DownloadItem>())
     internal val failLiveData = MutableLiveData<String>()
     private val idToItem = LongSparseArray<DownloadItem>()
@@ -29,11 +68,11 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
     private val finished = "已完成"
     private var setup = false
 
-    private val downloadObservableListCallback = object : ListUpdateCallback {
+    private val downloadListCallback = object : ListUpdateCallback {
         override fun onInserted(position: Int, count: Int) {
             var offset = 0
-            val list: MutableList<Any> = ArrayList(downloadItemObservableList.subList(position, position + count))
-            if (count == downloadItemObservableList.size) {
+            val list: MutableList<Any> = ArrayList(downloadItemList.subList(position, position + count))
+            if (count == downloadItemList.size) {
                 list.add(0, downloading)
             } else {
                 offset = 1
@@ -43,7 +82,7 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
 
         override fun onRemoved(position: Int, count: Int) {
             var offset = 0
-            if (downloadItemObservableList.isEmpty() && !itemList.isEmpty() && itemList[0] === downloading) {
+            if (downloadItemList.isEmpty() && !itemList.isEmpty() && itemList[0] === downloading) {
                 itemList.removeAt(0)
             } else {
                 offset = 1
@@ -59,8 +98,8 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
         override fun onMoved(fromPosition: Int, toPosition: Int) {
             itemList.enable = false
             itemList.enable = false
-            itemList[fromPosition + 1] = downloadItemObservableList[toPosition]
-            itemList[toPosition + 1] = downloadItemObservableList[fromPosition]
+            itemList[fromPosition + 1] = downloadItemList[toPosition]
+            itemList[toPosition + 1] = downloadItemList[fromPosition]
             itemList.enable = true
             itemList.onMoved(fromPosition + 1, toPosition + 1)
         }
@@ -68,18 +107,18 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
         override fun onChanged(position: Int, count: Int, payload: Any?) {
             var i = 0
             while (i < count) {
-                itemList[position + i + 1] = downloadItemObservableList[position + i]
+                itemList[position + i + 1] = downloadItemList[position + i]
                 i++
             }
         }
     }
 
 
-    private val finishedObservableListCallback = object : ListUpdateCallback {
+    private val finishedListCallback = object : ListUpdateCallback {
         private val startOffset: Int
-            get() = if (downloadItemObservableList.isEmpty()) {
+            get() = if (downloadItemList.isEmpty()) {
                 0
-            } else downloadItemObservableList.size + 1
+            } else downloadItemList.size + 1
 
         override fun onInserted(position: Int, count: Int) {
             var offset = 0
@@ -110,8 +149,8 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
         override fun onMoved(fromPosition: Int, toPosition: Int) {
             itemList.enable = false
             itemList.enable = false
-            itemList[fromPosition + 1 + startOffset] = downloadItemObservableList[toPosition]
-            itemList[toPosition + 1 + startOffset] = downloadItemObservableList[fromPosition]
+            itemList[fromPosition + 1 + startOffset] = downloadItemList[toPosition]
+            itemList[toPosition + 1 + startOffset] = downloadItemList[fromPosition]
             itemList.enable = true
             itemList.onMoved(fromPosition + 1 + startOffset, toPosition + 1 + startOffset)
         }
@@ -132,9 +171,10 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
         }
         setup = true
         this.path = path
-        downloadItemObservableList.addCallback(downloadObservableListCallback)
-        finishedItemList.addCallback(finishedObservableListCallback)
+        downloadItemList.addCallback(downloadListCallback)
+        finishedItemList.addCallback(finishedListCallback)
         YCDownloader.registerDownloadListener(this)
+        YCDownloader.registerDownlaodTasksChangeListener(this)
         Async.cache.execute {
             val downloadInfoList = YCDownloader.queryActiveDownloadInfoList()
             val finishedList = YCDownloader.queryFinishedDownloadInfoList()
@@ -142,7 +182,7 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
                 for (downloadInfo in downloadInfoList) {
                     val item = downloadInfoToItem(downloadInfo)
                     idToItem.put(downloadInfo.id!!, item)
-                    downloadItemObservableList.add(item)
+                    downloadItemList.add(item)
                 }
 
                 for (downloadInfo in finishedList) {
@@ -160,23 +200,23 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
 
     private fun doUpdateCallback(id: Long, updateCallback: (item: DownloadItem) -> DownloadItem) {
         val item = idToItem.get(id)?.let(updateCallback) ?: return
-        val index = downloadItemObservableList.indexOf(item)
+        val index = downloadItemList.indexOf(item)
         if (index == -1) {
             finishedItemList.remove(item)
-            downloadItemObservableList.add(0, item)
+            downloadItemList.add(0, item)
         } else if (index != -1) {
-            downloadItemObservableList[index] = item
+            downloadItemList[index] = item
         }
     }
 
-    override fun onPreparing(id: Long) {
+    override fun onDownloadConnecting(id: Long) {
         doUpdateCallback(id) { item ->
-            item.downloadState = PREPARING
+            item.downloadState = CONNECTING
             item
         }
     }
 
-    override fun onProgressUpdate(id: Long, total: Long, cur: Long, bps: Double) {
+    override fun onDownloadProgressUpdate(id: Long, total: Long, cur: Long, bps: Double) {
         doUpdateCallback(id) { item ->
             item.totalSize = total
             item.downloadedSize = cur
@@ -185,7 +225,7 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
         }
     }
 
-    override fun onUpdateInfo(info: DownloadInfo) {
+    override fun onDownloadUpdateInfo(info: DownloadInfo) {
         doUpdateCallback(info.id) {
             downloadInfoToItem(info).apply {
                 idToItem.put(it.id, this)
@@ -232,14 +272,14 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
 
     override fun onDownloadCanceled(id: Long) {
         val item = idToItem.get(id)
-        downloadItemObservableList.remove(item)
+        downloadItemList.remove(item)
         finishedItemList.remove(item)
         idToItem.remove(item!!.id, item)
     }
 
     override fun onDownloadFinished(downloadInfo: DownloadInfo) {
         val item = idToItem.get(downloadInfo.id!!)
-        if (item != null && downloadItemObservableList.remove(item)) {
+        if (item != null && downloadItemList.remove(item)) {
             finishedItemList.add(0, downloadInfoToItem(downloadInfo))
         }
     }
@@ -247,7 +287,7 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
     override fun submitSuccess(downloadInfo: DownloadInfo?) {
         if (downloadInfo != null) {
             val item = downloadInfoToItem(downloadInfo)
-            downloadItemObservableList.add(0, item)
+            downloadItemList.add(0, item)
             idToItem.put(item.id, item)
         }
     }
@@ -262,7 +302,7 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
         return DownloadItem(
             info.id!!,
             info.path,
-            info.filename,
+            info.filename ?: DownloadStringUtil.parseFilenameFromUrl(info.url),
             info.url,
             0.0,
             info.totalSize,
@@ -288,10 +328,13 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener {
 
     internal fun delete(id: Long, deleteFile: Boolean) {
         val downloadItem = idToItem[id]
-        downloadItem?.let {
-            downloadItemObservableList.remove(it)
-            finishedItemList.remove(it)
+        if (downloadItem != null) {
             YCDownloader.delete(id, deleteFile)
+            idToItem.remove(id)
+            downloadItemList.remove(downloadItem)
+            finishedItemList.remove(downloadItem)
+        } else {
+            Log.w("MainViewModel", "cannot find Download item.")
         }
     }
 

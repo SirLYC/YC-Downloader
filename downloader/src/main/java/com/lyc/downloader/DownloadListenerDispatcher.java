@@ -89,40 +89,40 @@ public class DownloadListenerDispatcher extends IDownloadCallback.Stub {
     }
 
     @Override
-    public void onPreparing(long id) {
+    public void onDownloadPreparing(long id) {
         Collection<DownloadListener> downloadListeners = getDispatchListeners(id);
         if (downloadListeners.isEmpty()) {
             return;
         }
         DownloadExecutors.androidMain.execute(() -> {
             for (DownloadListener downloadListener : downloadListeners) {
-                downloadListener.onPreparing(id);
+                downloadListener.onDownloadConnecting(id);
             }
         });
     }
 
     @Override
-    public void onProgressUpdate(long id, long total, long cur, double bps) {
+    public void onDownloadProgressUpdate(long id, long total, long cur, double bps) {
         Collection<DownloadListener> downloadListeners = getDispatchListeners(id);
         if (downloadListeners.isEmpty()) {
             return;
         }
         DownloadExecutors.androidMain.execute(() -> {
             for (DownloadListener downloadListener : downloadListeners) {
-                downloadListener.onProgressUpdate(id, total, cur, bps);
+                downloadListener.onDownloadProgressUpdate(id, total, cur, bps);
             }
         });
     }
 
     @Override
-    public void onUpdateInfo(DownloadInfo downloadInfo) {
+    public void onDownloadUpdateInfo(DownloadInfo downloadInfo) {
         Collection<DownloadListener> downloadListeners = getDispatchListeners(downloadInfo.getId());
         if (downloadListeners.isEmpty()) {
             return;
         }
         DownloadExecutors.androidMain.execute(() -> {
             for (DownloadListener downloadListener : downloadListeners) {
-                downloadListener.onUpdateInfo(downloadInfo);
+                downloadListener.onDownloadUpdateInfo(downloadInfo);
             }
         });
     }
@@ -180,7 +180,7 @@ public class DownloadListenerDispatcher extends IDownloadCallback.Stub {
     }
 
     @Override
-    public void onDownloadTaskWait(long id) {
+    public void onDownloadWaiting(long id) {
         Collection<DownloadListener> downloadListeners = getDispatchListeners(id);
         if (downloadListeners.isEmpty()) {
             return;

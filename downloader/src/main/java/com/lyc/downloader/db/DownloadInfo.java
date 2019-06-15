@@ -29,6 +29,11 @@ public class DownloadInfo implements Parcelable {
     private String url;
     @NotNull
     private String path;
+    /**
+     * Not that this field may be null.
+     * It's recommended that use {@link com.lyc.downloader.utils.DownloadStringUtil#parseFilenameFromUrl(String)}
+     * to parse filename from {@link #url}
+     */
     private String filename;
     private boolean resumable;
     @DownloadState
@@ -135,6 +140,13 @@ public class DownloadInfo implements Parcelable {
         dest.writeLong(downloadedSize);
         dest.writeLong(totalSize);
         dest.writeString(lastModified);
+        dest.writeLong(createdTime.getTime());
+        if (finishedTime == null) {
+            dest.writeByte((byte) 0);
+        } else {
+            dest.writeByte((byte) 1);
+            dest.writeLong(finishedTime.getTime());
+        }
         if (errorCode == null) {
             dest.writeByte((byte) 0);
         } else {
@@ -301,6 +313,12 @@ public class DownloadInfo implements Parcelable {
         downloadedSize = in.readLong();
         totalSize = in.readLong();
         lastModified = in.readString();
+        createdTime = new Date(in.readLong());
+        if (in.readByte() == 0) {
+            finishedTime = null;
+        } else {
+            finishedTime = new Date(in.readLong());
+        }
         if (in.readByte() == 0) {
             errorCode = null;
         } else {

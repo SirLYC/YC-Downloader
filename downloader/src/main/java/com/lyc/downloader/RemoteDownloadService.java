@@ -30,7 +30,6 @@ public class RemoteDownloadService extends Service {
             downloadManager.setDownloadCallback(null);
         }
 
-
         @Override
         public void registerDownloadTasksChangeCallback(IDownloadTasksChangeCallback callback) {
             downloadManager.setDownloadTasksChangeCallback(callback);

@@ -139,7 +139,7 @@ public abstract class YCDownloader {
      * start a task
      * if the task is non-start-able now, the method do nothing
      * when will the task be non-start-able?
-     * - already started: state is RUNNING, WAITING or PREPARING
+     * - already started: state is RUNNING, WAITING or CONNECTING
      * - busy changing state: PAUSING
      * - record deleted from db or id not exist
      *
@@ -267,7 +267,7 @@ public abstract class YCDownloader {
     }
 
     /**
-     * @param avoidFrameDrop if avoidFrameDrop {@link DownloadListener#onProgressUpdate(long, long, long, double)}
+     * @param avoidFrameDrop if avoidFrameDrop {@link DownloadListener#onDownloadProgressUpdate(long, long, long, double)}
      *                       will be called with certain interval to avoid send to many message to
      *                       main thread
      */

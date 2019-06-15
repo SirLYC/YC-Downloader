@@ -1,8 +1,8 @@
 package com.lyc.downloader.utils;
 
-import com.lyc.downloader.Constants;
 import org.greenrobot.greendao.annotation.NotNull;
 
+import java.io.File;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.text.DecimalFormat;
@@ -78,9 +78,13 @@ public class DownloadStringUtil {
     @NotNull
     public static String parseFilenameFromUrl(String url) {
         String result = parseFilenameFromUrlInner(url);
-        if (result.isEmpty()) {
-            return Constants.UNKNOWN_FILE_NAME;
+
+        try {
+            return URLDecoder.decode(result, "utf-8");
+        } catch (UnsupportedEncodingException e) {
+            Logger.e("DownloadStringUtil", "parseFilenameFromUrl(" + result + ")", e);
         }
+
         if (result.length() > 127) {
             int length = result.length();
             result = result.substring(length - 127, length);
@@ -90,13 +94,29 @@ public class DownloadStringUtil {
 
     private static String parseFilenameFromUrlInner(String url) {
         if (url == null) return "";
-        int index = url.lastIndexOf("?");
-        if (index != -1) url = url.substring(0, index);
+        int index = url.indexOf("name=");
+
+        if (index != -1) {
+            return removeUrlArgs(url.substring(index + 9).trim());
+        }
+
+        index = url.indexOf("filename=");
+        if (index != -1) {
+            return removeUrlArgs(url.substring(index + 9).trim());
+        }
+
+        url = removeUrlArgs(url);
         index = url.lastIndexOf("/");
         if (index != -1)
             return url.substring(index + 1);
 
-        return url.replaceAll("/", "");
+        return url.replaceAll(File.separator, "");
+    }
+
+    private static String removeUrlArgs(String url) {
+        int index = url.indexOf("?");
+        if (index != -1) return url.substring(0, index);
+        return url;
     }
 
     public static String parseFilenameFromContentDisposition(String value) {

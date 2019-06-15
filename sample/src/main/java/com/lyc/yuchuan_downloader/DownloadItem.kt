@@ -9,13 +9,13 @@ import java.util.*
  */
 data class DownloadItem(
     var id: Long = 0,
-    var path: String? = null,
-    var filename: String? = null,
-    var url: String? = null,
+    var path: String,
+    var filename: String,
+    var url: String,
     var bps: Double = 0.toDouble(),
     var totalSize: Long = 0,
     var downloadedSize: Long = 0,
-    var createdTime: Date? = null,
+    var createdTime: Date,
     var finishedTime: Date? = null,
     var downloadState: Int = 0,
     var errorCode: Int? = null

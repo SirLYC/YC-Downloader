@@ -50,7 +50,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
             }
         }
     };
-    int tryToConnectCount = 3;
+    private int tryToConnectCount = 3;
     DeathRecipient deathRecipient = new DeathRecipient() {
         @Override
         public void binderDied() {
@@ -411,7 +411,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
         }
     }
 
-    void registerLocalListeners(IDownloadService downloadService) {
+    void registerLocalListeners() {
         try {
             downloadService.registerDownloadCallback(downloadListenerDispatcher);
         } catch (RemoteException e) {

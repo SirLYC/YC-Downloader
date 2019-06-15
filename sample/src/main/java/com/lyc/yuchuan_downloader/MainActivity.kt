@@ -3,7 +3,6 @@ package com.lyc.yuchuan_downloader
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
-import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.AdapterView
@@ -104,12 +103,6 @@ class MainActivity : AppCompatActivity(), TextWatcher, DownloadItemViewBinder.On
                 YCDownloader.setMaxRunningTask(list[position])
             }
         }
-    }
-
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.main, menu)
-        return true
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {

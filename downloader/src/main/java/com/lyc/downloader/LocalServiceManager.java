@@ -28,7 +28,8 @@ class LocalServiceManager extends BaseServiceManager {
                 } catch (RemoteException e) {
                     Logger.e("LocalServiceManager", "cannot link to death", e);
                 }
-                registerLocalListeners(IDownloadService.Stub.asInterface(service));
+                downloadService = LocalDownloadService.asInterface(service);
+                registerLocalListeners();
                 countDownLatch.countDown();
             }
 

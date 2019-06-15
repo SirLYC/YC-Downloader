@@ -26,6 +26,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -41,11 +42,10 @@ import java.util.regex.Pattern;
  * @date 2019/4/1
  * @email kevinliu.sir@qq.com
  */
-// TODO 2019/4/10 @liuyuchuan: 处理服务器文件发生改变的情况
 public class DownloadTask {
 
     public static final int PENDING = 0;
-    public static final int PREPARING = 1;
+    public static final int CONNECTING = 1;
     public static final int RUNNING = 2;
     public static final int PAUSING = 3;
     public static final int PAUSED = 4;
@@ -68,6 +68,7 @@ public class DownloadTask {
     private volatile int state;
     private final Lock stateLock = new ReentrantLock();
     private final Lock runLock = new ReentrantLock();
+    private CountDownLatch startDownloadLatch;
     private final DownloadError downloadError = DownloadError.instance();
     private File downloadFile;
     private int downloadThreadCount = 4;
@@ -77,7 +78,6 @@ public class DownloadTask {
     private WriteToDiskRunnable[] writeToDiskRunnables;
     private Set<Thread> threads = new HashSet<>();
     final DownloadInfo downloadInfo;
-    private final DownloadListener downloadListener;
     private final SparseArray<DownloadThreadInfo> downloadThreadInfos = new SparseArray<>();
     private long bufferTimeout = 1;
     private AtomicLong downloadSize = new AtomicLong(0);
@@ -89,22 +89,25 @@ public class DownloadTask {
     static Pattern reduplicatedFilenamePattern = Pattern.compile("^(.*)\\(([1-9][0-9]*)\\)$");
     private volatile AtomicBoolean deleted = new AtomicBoolean(false);
     private static final String TAG = "DownloadTask";
+    /**
+     * also {@link DownloadListener}
+     */
     private DownloadManager downloadManager = DownloadManager.instance();
 
     /**
      * only used by {@link DownloadManager}
      */
-    DownloadTask(DownloadInfo downloadInfo, OkHttpClient client, DownloadListener downloadListener) {
+    DownloadTask(DownloadInfo downloadInfo, OkHttpClient client) {
         this.downloadInfo = downloadInfo;
-        this.downloadListener = downloadListener;
         this.client = client;
         // init by download manager
         // in a single thread
         switch (downloadInfo.getDownloadItemState()) {
             case PENDING:
-            case PREPARING:
+            case CONNECTING:
             case RUNNING:
-                state = PENDING;
+            case WAITING:
+                state = WAITING;
                 break;
             case PAUSING:
             case PAUSED:
@@ -112,9 +115,6 @@ public class DownloadTask {
                 break;
             case FINISH:
                 state = FINISH;
-                break;
-            case WAITING:
-                state = WAITING;
                 break;
             case CANCELED:
                 state = CANCELED;
@@ -156,7 +156,7 @@ public class DownloadTask {
         }
 
 
-        if (state != PREPARING) {
+        if (state != CONNECTING) {
             return false;
         }
 
@@ -260,7 +260,10 @@ public class DownloadTask {
             return false;
         }
 
-        downloadInfo.setFilename(filename);
+        if (!filename.equals(downloadInfo.getFilename())) {
+            downloadInfo.setFilename(filename);
+            downloadManager.onDownloadUpdateInfo(downloadInfo);
+        }
         downloadInfo.setTotalSize(totalSize);
         downloadInfo.setLastModified(lastModified);
         PersistUtil.persistDownloadInfoQuietly(
@@ -268,7 +271,7 @@ public class DownloadTask {
                 downloadInfo,
                 null
         );
-        downloadListener.onUpdateInfo(downloadInfo);
+        downloadManager.onDownloadUpdateInfo(downloadInfo);
         if (totalSize <= 0 || !resumable) {
             downloadThreadCount = 1;
         }
@@ -326,9 +329,9 @@ public class DownloadTask {
         try {
             stateLock.lock();
             if (state == PENDING) {
-                state = PREPARING;
+                state = CONNECTING;
                 stateChange();
-                downloadListener.onPreparing(downloadInfo.getId());
+                downloadManager.onDownloadConnecting(downloadInfo.getId());
             } else if (state == WAITING || handlePauseOrCancel()) {
                 return;
             } else {
@@ -346,42 +349,37 @@ public class DownloadTask {
         }
         resuming = false;
 
-
-        try {
-            stateLock.lock();
-            if (state == PREPARING) {
-                state = RUNNING;
-                stateChange();
-                downloadListener.onDownloadStart(downloadInfo);
-            } else if (handlePauseOrCancel()) {
-                return;
-            } else {
-                Logger.e(TAG, "try to preparing but get a wrong state, " +
-                        "state = " + state + "; task is:\n" + downloadInfo);
-            }
-        } finally {
-            stateLock.unlock();
-        }
-
         semaphore = new Semaphore(-1);
+        ThreadGroup threadGroup = new ThreadGroup("task#" + downloadInfo.getId());
+
+        startDownloadLatch = new CountDownLatch(1);
+        int id = 0;
         for (WriteToDiskRunnable writeToDiskRunnable : writeToDiskRunnables) {
-            Thread t = new Thread(writeToDiskRunnable);
+            Thread t = new Thread(writeToDiskRunnable, "Task#" + downloadInfo.getId() + "-Write" + id++);
             threads.add(t);
             t.start();
         }
 
+        id = 0;
         for (DownloadRunnable downloadRunnable : downloadRunnables) {
-            Thread t = new Thread(downloadRunnable);
+            Thread t = new Thread(downloadRunnable, "Task#" + downloadInfo.getId() + "-Download" + id++);
             threads.add(t);
             t.start();
         }
 
         leftActiveThreadCount.set(downloadThreadCount * 2);
+        try {
+            startDownloadLatch.await();
+        } catch (InterruptedException e) {
+            // do nothing
+        }
+        startDownloadLatch = null;
+
         new ProgressWatcher().run();
 
         try {
             stateLock.lock();
-            if (state == RUNNING || downloadSize.get() == downloadInfo.getTotalSize()) {
+            if (!deleted.get() && state == RUNNING || downloadSize.get() == downloadInfo.getTotalSize()) {
                 try {
                     fileLock.lock();
                     File targetFile = new File(downloadInfo.getPath(), downloadInfo.getFilename());
@@ -401,8 +399,8 @@ public class DownloadTask {
                 }
                 state = FINISH;
                 stateChange();
-                downloadListener.onDownloadFinished(downloadInfo);
-            } else if (state != ERROR && !handlePauseOrCancel()) {
+                downloadManager.onDownloadFinished(downloadInfo);
+            } else if (state != ERROR && !handlePauseOrCancel() && !deleted.get()) {
                 Logger.e(TAG, "Task#" + downloadInfo.getId() + " has a wrong state: " + state +
                         "; task is\n" + downloadInfo);
             }
@@ -417,7 +415,7 @@ public class DownloadTask {
             if (state == PAUSING) {
                 state = PAUSED;
                 stateChange();
-                downloadListener.onDownloadPaused(downloadInfo.getId());
+                downloadManager.onDownloadPaused(downloadInfo.getId());
                 preparedForResuming();
                 return true;
             } else if (state == CANCELED) {
@@ -461,6 +459,9 @@ public class DownloadTask {
     void toWait(boolean restart) {
         try {
             stateLock.lock();
+            if (state == WAITING) {
+                return;
+            }
             if (runLock.tryLock()) {
                 try {
                     if (state == PENDING || state == PAUSED || state == ERROR
@@ -476,17 +477,15 @@ public class DownloadTask {
                                 PersistUtil.persistDownloadInfoQuietly(downloadManager.daoSession, downloadInfo, new SparseArray<>(0));
                                 PersistUtil.deleteFile(downloadInfo, true);
                                 stateChange();
-                                downloadListener.onDownloadTaskWait(downloadInfo.getId());
                             });
                         } else {
                             stateChange();
-                            downloadListener.onDownloadTaskWait(downloadInfo.getId());
                         }
                     }
                 } finally {
                     runLock.unlock();
                 }
-            } else if (state == RUNNING || state == PREPARING) {
+            } else if (state == RUNNING || state == CONNECTING) {
                 this.restart = false;
                 state = WAITING;
                 stateChange();
@@ -507,7 +506,6 @@ public class DownloadTask {
                         iterator.remove();
                     }
                 }
-                downloadListener.onDownloadTaskWait(downloadInfo.getId());
             }
         } finally {
             stateLock.unlock();
@@ -640,12 +638,12 @@ public class DownloadTask {
                     }
                     state = PAUSED;
                     stateChange();
-                    downloadListener.onDownloadPaused(downloadInfo.getId());
+                    downloadManager.onDownloadPaused(downloadInfo.getId());
                 } finally {
                     runLock.unlock();
                 }
             } else {
-                if (state != RUNNING && state != PREPARING) {
+                if (state != RUNNING && state != CONNECTING) {
                     return;
                 }
                 state = PAUSING;
@@ -667,7 +665,7 @@ public class DownloadTask {
                         iterator.remove();
                     }
                 }
-                downloadListener.onDownloadPausing(downloadInfo.getId());
+                downloadManager.onDownloadPausing(downloadInfo.getId());
             }
         } finally {
             stateLock.unlock();
@@ -696,7 +694,7 @@ public class DownloadTask {
                     iterator.remove();
                 }
                 stateChange();
-                downloadListener.onDownloadCanceled(downloadInfo.getId());
+                downloadManager.onDownloadCanceled(downloadInfo.getId());
             }
         } finally {
             stateLock.unlock();
@@ -739,7 +737,7 @@ public class DownloadTask {
         }
         try {
             stateLock.lock();
-            if (state == ERROR || state == FATAL_ERROR || state != PREPARING || state != RUNNING) {
+            if (state == ERROR || state == FATAL_ERROR || state != CONNECTING || state != RUNNING) {
                 return;
             }
 
@@ -756,12 +754,12 @@ public class DownloadTask {
                         .getDownloadThreadInfoDao().deleteInTx(downloadInfo.getDownloadThreadInfos());
                 downloadInfo.getDownloadThreadInfos().clear();
                 stateChange();
-                downloadListener.onDownloadError(downloadInfo.getId(), code, true);
+                downloadManager.onDownloadError(downloadInfo.getId(), code, true);
             } else {
                 state = ERROR;
                 preparedForResuming();
                 stateChange();
-                downloadListener.onDownloadError(downloadInfo.getId(), code, false);
+                downloadManager.onDownloadError(downloadInfo.getId(), code, false);
             }
         } finally {
             stateLock.unlock();
@@ -804,7 +802,7 @@ public class DownloadTask {
         return !deleted.get();
     }
 
-    @IntDef({PENDING, PREPARING, RUNNING, PAUSING, PAUSED, FINISH, WAITING, CANCELED, ERROR, FATAL_ERROR})
+    @IntDef({PENDING, CONNECTING, RUNNING, PAUSING, PAUSED, FINISH, WAITING, CANCELED, ERROR, FATAL_ERROR})
     @Retention(RetentionPolicy.SOURCE)
     public @interface DownloadState {
     }
@@ -865,70 +863,92 @@ public class DownloadTask {
             InputStream is = null;
             long currentPos = startPos + threadDownloadedSize;
 
-            if (currentPos < startPos + contentLen || contentLen == -1) {
-                Request request;
-                boolean requestPartCheck = false;
-                boolean resumable = downloadInfo.getResumable();
-                if (contentLen > 0 && resumable) {
-                    Builder builder = baseRequest.newBuilder()
-                            .addHeader("Range", "bytes=" + currentPos + "-" + (startPos + contentLen - 1));
-                    if (downloadInfo.getLastModified() != null) {
-                        builder.addHeader("If-Range", downloadInfo.getLastModified()).build();
-                        requestPartCheck = true;
+            try {
+                if (currentPos < startPos + contentLen || contentLen == -1) {
+                    Request request;
+                    boolean requestPartCheck = false;
+                    boolean resumable = downloadInfo.getResumable();
+                    if (contentLen > 0 && resumable) {
+                        Builder builder = baseRequest.newBuilder()
+                                .addHeader("Range", "bytes=" + currentPos + "-" + (startPos + contentLen - 1));
+                        if (downloadInfo.getLastModified() != null) {
+                            builder.addHeader("If-Range", downloadInfo.getLastModified()).build();
+                            requestPartCheck = true;
+                        }
+                        request = builder.build();
+                    } else if (resumable) {
+                        Builder builder = baseRequest.newBuilder()
+                                .addHeader("Range", "bytes=" + currentPos + "-");
+                        if (downloadInfo.getLastModified() != null) {
+                            builder.addHeader("If-Range", downloadInfo.getLastModified()).build();
+                            requestPartCheck = true;
+                        }
+                        request = builder.build();
+                    } else {
+                        currentPos = 0;
+                        downloadSize.set(0);
+                        request = baseRequest;
                     }
-                    request = builder.build();
-                } else if (resumable) {
-                    Builder builder = baseRequest.newBuilder()
-                            .addHeader("Range", "bytes=" + currentPos + "-");
-                    if (downloadInfo.getLastModified() != null) {
-                        builder.addHeader("If-Range", downloadInfo.getLastModified()).build();
-                        requestPartCheck = true;
-                    }
-                    request = builder.build();
-                } else {
-                    currentPos = 0;
-                    downloadSize.set(0);
-                    request = baseRequest;
-                }
 
-                boolean success = false;
-                int retryCount = this.retryCount;
-                ResponseBody body = null;
-                do {
-                    if (state != RUNNING || deleted.get()) {
-                        return;
-                    }
-                    try {
-                        call = client.newCall(request);
-                        Response response = call.execute();
-                        // TODO: 2019/4/26 auto retry if expired
-                        if (requestPartCheck && response.code() == 200) {
-                            reportError(DownloadError.ERROR_CONTENT_EXPIRED);
+                    boolean success = false;
+                    int retryCount = this.retryCount;
+                    ResponseBody body = null;
+                    do {
+                        if ((state != RUNNING && state != CONNECTING) || deleted.get()) {
                             return;
                         }
+                        try {
+                            call = client.newCall(request);
+                            Response response = call.execute();
+                            // TODO: 2019/4/26 auto retry if expired
+                            if (requestPartCheck && response.code() == 200) {
+                                reportError(DownloadError.ERROR_CONTENT_EXPIRED);
+                                return;
+                            }
 
-                        if (!response.isSuccessful() || ((body = response.body()) == null))
-                            continue;
-                        retryCount = 0;
-                        success = true;
-                    } catch (IOException e) {
+                            if (!response.isSuccessful() || ((body = response.body()) == null))
+                                continue;
+                            retryCount = 0;
+                            success = true;
+                        } catch (IOException e) {
+                            try {
+                                stateLock.lock();
+                                if (state == RUNNING) {
+                                    Logger.e(TAG, "when connect @Task#" + downloadInfo.getId() + ", Thread#" + id, e);
+                                }
+                            } finally {
+                                stateLock.unlock();
+                            }
+                        }
+                    } while (retryCount-- > 0 && !deleted.get());
+
+                    if (!success) {
+                        reportError(DownloadError.ERROR_NETWORK);
+                        return;
+                    }
+
+                    is = Objects.requireNonNull(body).byteStream();
+
+                    if (state == CONNECTING) {
                         try {
                             stateLock.lock();
-                            if (state == RUNNING) {
-                                Logger.e(TAG, "when connect @Task#" + downloadInfo.getId() + ", Thread#" + id, e);
+                            if (state == CONNECTING) {
+                                state = RUNNING;
+                                stateChange();
+                                downloadManager.onDownloadStart(downloadInfo);
+                            } else if (state != RUNNING && handlePauseOrCancel()) {
+                                Logger.e(TAG, "State CONNECTING or RUNNING expected but got a wrong state, " +
+                                        "state = " + state + "; task is:\n" + downloadInfo);
                             }
                         } finally {
                             stateLock.unlock();
                         }
                     }
-                } while (retryCount-- > 0 && !deleted.get());
-
-                if (!success) {
-                    reportError(DownloadError.ERROR_NETWORK);
-                    return;
                 }
-
-                is = Objects.requireNonNull(body).byteStream();
+            } finally {
+                if (startDownloadLatch != null) {
+                    startDownloadLatch.countDown();
+                }
             }
 
             int retryCount = this.retryCount;
@@ -1022,7 +1042,7 @@ public class DownloadTask {
                 } catch (IOException e) {
                     try {
                         stateLock.lock();
-                        if (retryCount > 0 && state == RUNNING) {
+                        if (retryCount > 0 && (state == RUNNING || state == CONNECTING)) {
                             retryCount--;
                             continue;
                         }
@@ -1038,7 +1058,7 @@ public class DownloadTask {
             }
 
             Segment segment;
-            while (state == RUNNING && !deleted.get() && raf != null) {
+            while ((state == RUNNING || state == CONNECTING) && !deleted.get() && raf != null) {
                 try {
                     segment = downloadBuffer.availableReadSegment(bufferTimeout);
                 } catch (InterruptedException e) {
@@ -1183,7 +1203,8 @@ public class DownloadTask {
                             downloadThreadInfos
                     );
                 }
-                downloadListener.onProgressUpdate(downloadInfo.getId(), downloadInfo.getTotalSize(), current, bps);
+                downloadManager.onDownloadProgressUpdate(downloadInfo.getId(), downloadInfo.getTotalSize(), current, bps);
+                System.out.println("update! " + current + "/" + downloadInfo.getTotalSize());
                 lastDownloadSize = current;
                 lastTimeNano = time;
                 lastBps = bps;

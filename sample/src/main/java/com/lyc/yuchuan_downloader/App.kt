@@ -10,7 +10,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         // multi process
-        YCDownloader.install(this, true)
+        YCDownloader.install(this, false)
         // single process
         //        YCDownloader.install(this, false);
         // or

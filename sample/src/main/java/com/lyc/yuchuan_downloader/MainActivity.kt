@@ -27,10 +27,12 @@ class MainActivity : AppCompatActivity(), TextWatcher, DownloadItemViewBinder.On
     private var index: Int = 0
     private lateinit var mainViewModel: MainViewModel
     private val testLinks = arrayOf(
+        "https://www.baidu.com/",
+        "https://qd.myapp.com/myapp/qqteam/Androidlite/qqlite_3.7.1.704_android_r110206_GuanWang_537057973_release_10000484.apk",
+        "https://qd.myapp.com/myapp/qqteam/AndroidQQi/qq_6.0.1.6600_android_r25029_GuanWang_537057608_release.apk",
         "https://download.alicdn.com/dingtalk-desktop/win_installer/Release/DingTalk_v4.6.21.50011.exe?key=4978092c5535384bfbb2ead8fed57be6&tmp=1556028679291",
         "https://cdn.mysql.com//Downloads/MySQL-5.7/mysql-5.7.25-macos10.14-x86_64.dmg",
-        "http://www.officeplus.cn/t/9/92A75810F24C716EB58A695A8A14A0FF.pptx",
-        "http://www.zgtsshzy.net/CN/article/downloadArticleFile.do?attachType=PDF&id=567"
+        "http://www.officeplus.cn/t/9/92A75810F24C716EB58A695A8A14A0FF.pptx"
     )
     private lateinit var adapter: ReactiveAdapter
 
@@ -92,15 +94,14 @@ class MainActivity : AppCompatActivity(), TextWatcher, DownloadItemViewBinder.On
             if (index != -1) {
                 spinner.setSelection(index)
             }
-        }
+            spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) {
 
-        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onNothingSelected(parent: AdapterView<*>?) {
+                }
 
-            }
-
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                YCDownloader.setMaxRunningTask(list[position])
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    YCDownloader.setMaxRunningTask(list[position])
+                }
             }
         }
     }

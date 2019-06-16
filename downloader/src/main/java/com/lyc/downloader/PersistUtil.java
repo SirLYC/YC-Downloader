@@ -41,6 +41,15 @@ class PersistUtil {
         return Long.compare(id1, id2);
     };
 
+    static void persisDownloadThreadInfoQuietly(DaoSession daoSession, DownloadThreadInfo downloadThreadInfo) {
+        DownloadThreadInfoDao downloadThreadInfoDao = daoSession.getDownloadThreadInfoDao();
+        try {
+            downloadThreadInfoDao.save(downloadThreadInfo);
+        } catch (Exception e) {
+            Logger.e("PersistUtil", "persisDownloadThreadInfoQuietly", e);
+        }
+    }
+
     static void persistDownloadInfoQuietly(DaoSession daoSession, DownloadInfo downloadInfo,
                                            SparseArray<DownloadThreadInfo> downloadThreadInfos) {
         try {

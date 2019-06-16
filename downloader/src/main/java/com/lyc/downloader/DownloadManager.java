@@ -67,6 +67,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
         SQLiteDatabase db = new DevOpenHelper(appContext, DB_NAME).getWritableDatabase();
         daoSession = new DaoMaster(db).newSession();
         maxRunningTask = 4;
+        Logger.d("DownloadManager", "DownloadManager: maxRunningTask = " + maxRunningTask);
         recoverDownloadTasks();
     }
 
@@ -134,39 +135,29 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
         DownloadExecutors.io.execute(() -> {
             try {
                 List<DownloadInfo> downloadInfoList = queryActiveDownloadInfoListInner();
-                List<DownloadInfo> finishedDownloadInfoList = queryFinishedDownloadInfoList();
-                Collections.reverse(finishedDownloadInfoList);
-                // make sure to add last
+                List<DownloadInfo> finishedDownloadInfoList = queryFinishedDownloadInfoListInner();
                 for (DownloadInfo downloadInfo : downloadInfoList) {
                     long id = downloadInfo.getId();
+                    infoTable.put(id, downloadInfo);
+
+                    int downloadItemState = downloadInfo.getDownloadItemState();
+                    if (downloadItemState == ERROR || downloadItemState == FATAL_ERROR) {
+                        errorTasksId.add(id);
+                    } else {
+                        downloadInfo.setDownloadItemState(PAUSED);
+                        pausingTasksId.add(id);
+                    }
                     DownloadTask downloadTask = new DownloadTask(downloadInfo, client);
                     taskTable.put(id, downloadTask);
-                    infoTable.put(id, downloadInfo);
-                    switch (downloadInfo.getDownloadItemState()) {
-                        case PENDING:
-                        case CONNECTING:
-                        case RUNNING:
-                        case WAITING:
-                            enqueueTask(id, false, false);
-                            break;
-                        case STOPPING:
-                        case PAUSED:
-                            pausingTasksId.add(id);
-                            break;
-                        case ERROR:
-                        case FATAL_ERROR:
-                            errorTasksId.add(id);
-                            break;
-                    }
                     downloadInfo.setDownloadItemState(downloadTask.getState());
                 }
+
                 daoSession.getDownloadInfoDao().saveInTx(downloadInfoList);
                 for (DownloadInfo downloadInfo : finishedDownloadInfoList) {
                     taskTable.put(downloadInfo.getId(), new DownloadTask(downloadInfo, client));
                     infoTable.put(downloadInfo.getId(), downloadInfo);
                 }
             } finally {
-                schedule();
                 recoverCountDownLatch.countDown();
             }
         });
@@ -583,6 +574,11 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
         if (maxRunningTask != count) {
             DownloadExecutors.message.execute(() -> {
                 maxRunningTask = count;
+                try {
+                    throw new Exception();
+                } catch (Exception e) {
+                    Logger.d("DownloadManager", "MaxRunningTask = " + maxRunningTask, e);
+                }
                 schedule();
             });
         }
@@ -613,11 +609,17 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
 
     @Override
     public DownloadInfo queryDownloadInfo(long id) {
+        waitForRecovering();
         return infoTable.get(id);
     }
 
     @Override
     public List<DownloadInfo> queryFinishedDownloadInfoList() {
+        waitForRecovering();
+        return queryFinishedDownloadInfoListInner();
+    }
+
+    public List<DownloadInfo> queryFinishedDownloadInfoListInner() {
         DownloadInfoDao downloadInfoDao = daoSession.getDownloadInfoDao();
         return downloadInfoDao.queryBuilder()
                 .where(DownloadInfoDao.Properties.DownloadItemState.eq(FINISH))

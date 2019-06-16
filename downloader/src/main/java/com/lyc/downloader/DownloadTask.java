@@ -737,7 +737,7 @@ public class DownloadTask {
         }
         try {
             stateLock.lock();
-            if (state == ERROR || state == FATAL_ERROR || state != CONNECTING || state != RUNNING) {
+            if (state == ERROR || state == FATAL_ERROR || (state != CONNECTING && state != RUNNING)) {
                 return;
             }
 

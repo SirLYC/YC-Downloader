@@ -154,14 +154,14 @@ public class DownloadListenerDispatcher extends IDownloadCallback.Stub {
     }
 
     @Override
-    public void onDownloadPausing(long id) {
+    public void onDownloadStopping(long id) {
         Collection<DownloadListener> downloadListeners = getDispatchListeners(id);
         if (downloadListeners.isEmpty()) {
             return;
         }
         DownloadExecutors.androidMain.execute(() -> {
             for (DownloadListener downloadListener : downloadListeners) {
-                downloadListener.onDownloadPausing(id);
+                downloadListener.onDownloadStopping(id);
             }
         });
     }

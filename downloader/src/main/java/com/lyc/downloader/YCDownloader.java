@@ -144,7 +144,7 @@ public abstract class YCDownloader {
      * if the task is non-start-able now, the method do nothing
      * when will the task be non-start-able?
      * - already started: state is RUNNING, WAITING or CONNECTING
-     * - busy changing state: PAUSING
+     * - busy changing state: STOPPING
      * - record deleted from db or id not exist
      *
      * @param id      download task id

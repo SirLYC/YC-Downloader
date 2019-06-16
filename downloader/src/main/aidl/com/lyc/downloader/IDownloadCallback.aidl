@@ -15,7 +15,7 @@ interface IDownloadCallback {
 
     void onDownloadStart(in DownloadInfo downloadInfo);
 
-    void onDownloadPausing(long id);
+    void onDownloadStopping(long id);
 
     void onDownloadPaused(long id);
 

@@ -50,12 +50,12 @@ public interface DownloadListener {
     /**
      * Called when the task is pausing.
      * After this state, {@link #onDownloadPaused(long)} will be called.
-     * And you should not start the task when it's state is {@link DownloadTask#PAUSING}.
+     * And you should not start the task when it's state is {@link DownloadTask#STOPPING}.
      */
-    void onDownloadPausing(long id);
+    void onDownloadStopping(long id);
 
     /**
-     * @see #onDownloadPausing(long)
+     * @see #onDownloadStopping(long)
      */
     void onDownloadPaused(long id);
 

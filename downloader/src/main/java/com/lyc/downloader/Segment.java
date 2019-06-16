@@ -5,17 +5,13 @@ package com.lyc.downloader;
  * @date 2019/4/7
  * @email kevinliu.sir@qq.com
  */
-public class Segment {
-    public final byte[] buffer;
-    public int readSize;
-    public long startPos;
-    public int tid;
+class Segment {
+    final byte[] buffer;
+    int readSize;
+    long startPos;
+    int tid;
 
-    public Segment(int bufferSize) {
-        if (bufferSize <= 0) {
-            buffer = null;
-        } else {
-            this.buffer = new byte[bufferSize];
-        }
+    Segment(int bufferSize) {
+        this.buffer = new byte[bufferSize];
     }
 }

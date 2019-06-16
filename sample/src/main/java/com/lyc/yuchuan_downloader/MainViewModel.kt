@@ -249,9 +249,9 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener, DownloadTas
         }
     }
 
-    override fun onDownloadPausing(id: Long) {
+    override fun onDownloadStopping(id: Long) {
         doUpdateCallback(id) { item ->
-            item.downloadState = PAUSING
+            item.downloadState = STOPPING
             item
         }
     }

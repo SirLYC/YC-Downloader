@@ -55,7 +55,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     private final Lock downloadTasksChangeCallbackSetLock = new ReentrantLock();
     private IDownloadCallback downloadCallback;
     private IDownloadTasksChangeCallback downloadTasksChangeCallback;
-    private int maxRunningTask = 4;
+    private int maxRunningTask;
     private volatile boolean avoidFrameDrop = true;
 
     private CountDownLatch recoverCountDownLatch = new CountDownLatch(1);
@@ -66,6 +66,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
         this.client = client;
         SQLiteDatabase db = new DevOpenHelper(appContext, DB_NAME).getWritableDatabase();
         daoSession = new DaoMaster(db).newSession();
+        maxRunningTask = 4;
         recoverDownloadTasks();
     }
 
@@ -148,7 +149,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                         case WAITING:
                             enqueueTask(id, false, false);
                             break;
-                        case PAUSING:
+                        case STOPPING:
                         case PAUSED:
                             pausingTasksId.add(id);
                             break;
@@ -291,13 +292,13 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     }
 
     @Override
-    public void onDownloadPausing(long id) {
+    public void onDownloadStopping(long id) {
         IDownloadCallback downloadCallback = this.downloadCallback;
         if (downloadCallback != null) {
             try {
-                downloadCallback.onDownloadPausing(id);
+                downloadCallback.onDownloadStopping(id);
             } catch (RemoteException e) {
-                Logger.e(TAG, "onDownloadPausing", e);
+                Logger.e(TAG, "onDownloadStopping", e);
             }
         }
     }
@@ -357,6 +358,12 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
         } catch (RemoteException e) {
             Logger.e(TAG, "onDownloadWaiting", e);
         }
+        DownloadExecutors.message.execute(() -> {
+            if (!waitingTasksId.contains(id)) {
+                waitingTasksId.offer(id);
+                schedule();
+            }
+        });
     }
 
     @Override
@@ -429,7 +436,10 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
             return;
         }
 
-        downloadTask.toWait(restart);
+        if (!downloadTask.toWait(restart)) {
+            return;
+        }
+
         if (!waitingTasksId.contains(id)) {
             waitingTasksId.offer(id);
             if (scheduleAfterEnqueue) {

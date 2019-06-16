@@ -70,7 +70,7 @@ class DownloadItemViewBinder(
             when (item.downloadState) {
                 PENDING, CONNECTING -> stateString = "$stateString | 连接中"
                 RUNNING -> stateString = stateString + " | " + DownloadStringUtil.bpsToString(item.bps)
-                PAUSING -> stateString = "$stateString | 正在暂停"
+                STOPPING -> stateString = "$stateString | 正在停止"
                 PAUSED -> stateString = "$stateString | 已暂停"
                 WAITING -> stateString = "$stateString | 等待中"
                 CANCELED -> stateString = "已取消"

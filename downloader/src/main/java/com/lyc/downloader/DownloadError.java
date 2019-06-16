@@ -88,7 +88,7 @@ public class DownloadError {
                 case ERROR_CONNECT_FATAL:
                     return "连接失败";
                 case ERROR_CONTENT_EXPIRED:
-                    return "资源过期，请重试";
+                    return "资源过期，请重新下载";
                 default:
                     return "未知错误";
             }

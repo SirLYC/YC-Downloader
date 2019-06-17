@@ -790,6 +790,7 @@ public class DownloadTask {
                 preparedForResuming();
             }
 
+            stateChange();
             downloadManager.onDownloadError(downloadInfo.getId(), code, fatal);
 
         } finally {

@@ -40,11 +40,11 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener, DownloadTas
                     downloadInfoToItem(downloadInfo).let { newAddItem ->
                         idToItem.put(downloadInfo.id, newAddItem)
                         var index = downloadItemList.indexOfFirst { item ->
-                            item.createdTime >= newAddItem.createdTime
+                            item.createdTime <= newAddItem.createdTime
                         }
 
-                        if (index < 0 || index > downloadItemList.size) {
-                            index = downloadItemList.size
+                        if (index < 0) {
+                            index = 0
                         }
                         downloadItemList.add(index, newAddItem)
                     }

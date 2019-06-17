@@ -619,7 +619,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
         return queryFinishedDownloadInfoListInner();
     }
 
-    public List<DownloadInfo> queryFinishedDownloadInfoListInner() {
+    private List<DownloadInfo> queryFinishedDownloadInfoListInner() {
         DownloadInfoDao downloadInfoDao = daoSession.getDownloadInfoDao();
         return downloadInfoDao.queryBuilder()
                 .where(DownloadInfoDao.Properties.DownloadItemState.eq(FINISH))

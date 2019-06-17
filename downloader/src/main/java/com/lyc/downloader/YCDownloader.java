@@ -24,6 +24,9 @@ import java.util.concurrent.TimeUnit;
  * However, all the get/isXX methods are executed in main thread immediately, witch means they won't wait for connection
  * to the service.
  * If you want to get the right value immediately, call them in {@link YCDownloader#postOnConnection(Runnable)}
+ * All listener methods are guarded to call in main thread
+ * @see DownloadListener
+ * @see DownloadTasksChangeListener
  */
 public abstract class YCDownloader {
     private static BaseServiceManager serviceManager;
@@ -254,7 +257,8 @@ public abstract class YCDownloader {
     }
 
     /**
-     * if count > 0 and count != current maxRunningTask
+     * Note: count >= 0 and count <= {@link #getMaxSupportRunningTask()}
+     * If count >= 0 and count != current maxRunningTask,
      * schedule tasks
      */
     public static void setMaxRunningTask(int count) {

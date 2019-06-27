@@ -174,7 +174,7 @@ class MainViewModel : ViewModel(), SubmitListener, DownloadListener, DownloadTas
         downloadItemList.addCallback(downloadListCallback)
         finishedItemList.addCallback(finishedListCallback)
         YCDownloader.registerDownloadListener(this)
-        YCDownloader.registerDownlaodTasksChangeListener(this)
+        YCDownloader.registerDownloadTasksChangeListener(this)
         Async.cache.execute {
             val downloadInfoList = YCDownloader.queryActiveDownloadInfoList()
             val finishedList = YCDownloader.queryFinishedDownloadInfoList()

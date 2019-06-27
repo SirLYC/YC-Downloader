@@ -60,7 +60,7 @@ public class DownloadTask {
 
     // in bytes
     private static final int MAX_BUFFER = 1 << 16;
-    private static final int MIN_BUFFER = 4 * (2 << 10);
+    private static final int MIN_BUFFER = 4 * (1 << 10);
 
     // TODO: 2019/4/26 design a suitable thread count choose algorithm...
     private static final int MAX_DOWNLOAD_THREAD = 4;
@@ -184,8 +184,11 @@ public class DownloadTask {
             boolean needDecideFilename = filename == null;
             if (needDecideFilename) {
                 filename = DownloadStringUtil.parseFilenameFromContentDisposition(response.header("Content-Disposition"));
-                if (filename == null)
+                if (filename == null || filename.isEmpty())
                     filename = DownloadStringUtil.parseFilenameFromUrl(response.request().url().toString());
+                if (filename.isEmpty()) {
+                    filename = Constants.UNKNOWN_FILE_NAME;
+                }
             }
 
 
@@ -668,8 +671,13 @@ public class DownloadTask {
         // 选择bufferSize
         // 尽可能让进度条能多动，但下载缓冲区不至于太小或太大
         long bufferSize = totalLen / 100L;
-        if (bufferSize < MIN_BUFFER) bufferSize = MIN_BUFFER;
-        else bufferSize = MAX_BUFFER;
+        if (bufferSize < MIN_BUFFER) {
+            bufferSize = MIN_BUFFER;
+        } else if (bufferSize > MAX_BUFFER) {
+            bufferSize = MAX_BUFFER;
+        }
+
+        System.out.println("buffer size = " + bufferSize + "B");
 
         return (int) bufferSize;
     }
@@ -873,8 +881,14 @@ public class DownloadTask {
         }
 
         private void cancelRequest() {
-            if (call != null) {
-                call.cancel();
+            try {
+                stateLock.lock();
+                closeInputStream();
+                if (call != null) {
+                    call.cancel();
+                }
+            } finally {
+                stateLock.unlock();
             }
         }
 
@@ -940,12 +954,18 @@ public class DownloadTask {
                 int retryCount = this.retryCount;
                 ResponseBody body = null;
                 do {
-                    if (state != CONNECTING || deleted.get()) {
-                        closeInputStream();
-                        return;
-                    }
                     try {
-                        call = client.newCall(request);
+                        try {
+                            stateLock.lock();
+                            cancelRequest();
+                            call = client.newCall(request);
+                            if ((state != CONNECTING && state != RUNNING) || deleted.get()) {
+                                closeInputStream();
+                                return;
+                            }
+                        } finally {
+                            stateLock.unlock();
+                        }
                         Response response = call.execute();
 
                         if (!response.isSuccessful() || ((body = response.body()) == null))
@@ -964,7 +984,7 @@ public class DownloadTask {
                         retryCount = 0;
                         success = true;
                     } catch (IOException e) {
-                        // do nothing
+                        Logger.e("DownloadTask", "Connect error! retry=" + retryCount, e);
                     }
                 } while (retryCount-- > 0 && !deleted.get());
 
@@ -1008,7 +1028,20 @@ public class DownloadTask {
                         }
 
                         if (left > 0) {
+                            long start = System.nanoTime();
                             readSize = is.read(segment.buffer, 0, Math.min(segment.buffer.length, (int) left));
+
+                            long targetBps = downloadManager.singleTaskSpeedLimit();
+                            if (targetBps > 0) {
+                                long sleepTime = (long) (readSize * 1000.0 / (targetBps / Math.max(downloadThreadCount, 1)) - (System.nanoTime() - start) / 1000_000.0);
+                                if (sleepTime > 0) {
+                                    try {
+                                        Thread.sleep(sleepTime);
+                                    } catch (InterruptedException e) {
+                                        // do nothing
+                                    }
+                                }
+                            }
                         }
                     }
                     segment.startPos = startPos + threadDownloadedSize;
@@ -1026,6 +1059,14 @@ public class DownloadTask {
                             reportError(DownloadError.ERROR_NETWORK);
                             if (BuildConfig.DEBUG) {
                                 e.printStackTrace();
+                            }
+                            continue;
+                        } else if (state == RUNNING) {
+                            Logger.e("DownloadTask", "Error! Try to retry(" + retryCount + ")...");
+                            connect();
+                            is = inputStream;
+                            if (state == RUNNING) {
+                                Logger.d("DownloadTask", "retry(" + retryCount + ") connect successfully!");
                             }
                             continue;
                         }
@@ -1137,7 +1178,6 @@ public class DownloadTask {
                             enqueueBuffer = true;
                             long downloadedSize = downloadThreadInfo.getDownloadedSize();
                             downloadThreadInfo.setDownloadedSize(downloadedSize + writeSize);
-                            PersistUtil.persisDownloadThreadInfoQuietly(downloadManager.daoSession, downloadThreadInfo);
                         } catch (IOException e) {
                             try {
                                 stateLock.lock();
@@ -1188,15 +1228,16 @@ public class DownloadTask {
                     return;
                 }
 
-                boolean acquire;
+                boolean acquire = false;
 
+                boolean interrupted = false;
                 try {
                     acquire = semaphore.tryAcquire(1, watchInterval, TimeUnit.MILLISECONDS);
                 } catch (InterruptedException e) {
                     if (checkEnd()) {
                         return;
                     }
-                    continue;
+                    interrupted = true;
                 }
 
                 long current = downloadSize.get();
@@ -1209,6 +1250,10 @@ public class DownloadTask {
                             downloadInfo,
                             downloadThreadInfos
                     );
+                }
+
+                if (interrupted) {
+                    continue;
                 }
 
                 long time = System.nanoTime();

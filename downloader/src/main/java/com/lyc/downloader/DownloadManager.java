@@ -56,6 +56,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     private IDownloadCallback downloadCallback;
     private IDownloadTasksChangeCallback downloadTasksChangeCallback;
     private int maxRunningTask;
+    private long speedLimit;
     private volatile boolean avoidFrameDrop = true;
 
     private CountDownLatch recoverCountDownLatch = new CountDownLatch(1);
@@ -93,6 +94,12 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
             throw new IllegalStateException("init download manager by DownloadManager.init(Context context) first!");
         }
         return instance;
+    }
+
+
+    long singleTaskSpeedLimit() {
+        if (speedLimit < 0) return -1;
+        return speedLimit / Math.max(runningTasksId.size(), 1);
     }
 
     private void pauseAllInner() {
@@ -582,6 +589,16 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                 schedule();
             });
         }
+    }
+
+    @Override
+    public long getSpeedLimit() {
+        return speedLimit;
+    }
+
+    @Override
+    public void setSpeedLimit(long speedLimit) {
+        this.speedLimit = speedLimit;
     }
 
     public boolean isAvoidFrameDrop() {

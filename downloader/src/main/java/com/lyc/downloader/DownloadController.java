@@ -22,6 +22,10 @@ public interface DownloadController {
 
     void setMaxRunningTask(int count);
 
+    long getSpeedLimit();
+
+    void setSpeedLimit(long speedLimit);
+
     boolean isAvoidFrameDrop();
 
     void setAvoidFrameDrop(boolean avoidFrameDrop);

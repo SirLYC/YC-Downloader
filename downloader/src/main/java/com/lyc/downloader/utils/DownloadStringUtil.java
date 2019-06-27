@@ -77,59 +77,64 @@ public class DownloadStringUtil {
 
     @NotNull
     public static String parseFilenameFromUrl(String url) {
-        String result = parseFilenameFromUrlInner(url);
+        StringBuilder sb = new StringBuilder(url);
 
+        parseFilenameFromUrlInner(sb);
+
+        String result = sb.toString().replaceAll("\\s", "");
         try {
-            return URLDecoder.decode(result, "utf-8");
+            result = URLDecoder.decode(sb.toString(), "utf-8");
         } catch (UnsupportedEncodingException e) {
             Logger.e("DownloadStringUtil", "parseFilenameFromUrl(" + result + ")", e);
         }
 
-        if (result.length() > 127) {
-            int length = result.length();
+        int length = result.length();
+        if (length > 127) {
             result = result.substring(length - 127, length);
         }
         return result;
     }
 
-    private static String parseFilenameFromUrlInner(String url) {
-        if (url == null) return "";
-        int index = url.indexOf("name=");
+    private static void parseFilenameFromUrlInner(StringBuilder sb) {
+        if (sb.length() == 0) {
+            return;
+        }
 
+        removeUrlArgs(sb);
+        int s = sb.length();
+        if (sb.charAt(s - 1) == '/') {
+            sb.delete(s - 1, s);
+        }
+
+        int index = sb.lastIndexOf("/");
         if (index != -1) {
-            return removeUrlArgs(url.substring(index + 5).trim());
+            sb.delete(0, index + 1);
         }
 
-        index = url.indexOf("filename=");
-        if (index != -1) {
-            return removeUrlArgs(url.substring(index + 9).trim());
+        s = sb.length();
+        while (sb.charAt(s - 1) == File.separatorChar) {
+            sb.delete(s - 1, 1);
+            s = sb.length();
         }
 
-        index = url.indexOf("file=");
-        if (index != -1) {
-            return removeUrlArgs(url.substring(index + 5).trim());
+        if (s > 8 && "https://".equals(sb.substring(0, 8))) {
+            sb.delete(0, 8);
+        } else if (s > 6 && "http://".equals(sb.substring(0, 6))) {
+            sb.delete(0, 6);
+        } else {
+            for (index = 0, s = sb.length(); index < s; index++) {
+                if (sb.charAt(index) == File.separatorChar) {
+                    sb.setCharAt(index, '_');
+                }
+            }
         }
-
-        url = removeUrlArgs(url);
-        index = url.lastIndexOf("/");
-        String tmp;
-        if (index != -1 && !(tmp = url.substring(index + 1).trim()).isEmpty()) {
-            url = tmp;
-        }
-
-        if (url.endsWith("_")) {
-            url = url.substring(0, url.length() - 1);
-        }
-
-        return url.replaceAll("https://", "")
-                .replaceAll("http://", "")
-                .replaceAll(File.separator, "_");
     }
 
-    private static String removeUrlArgs(String url) {
+    private static void removeUrlArgs(StringBuilder url) {
         int index = url.indexOf("?");
-        if (index != -1) return url.substring(0, index);
-        return url;
+        if (index != -1) {
+            url.delete(index, url.length());
+        }
     }
 
     public static String parseFilenameFromContentDisposition(String value) {

@@ -252,6 +252,19 @@ public abstract class YCDownloader {
         return serviceManager.queryFinishedDownloadInfoList();
     }
 
+    public static long getSpeedLimit() {
+        return serviceManager.getSpeedLimit();
+    }
+
+    /**
+     * Limit download speed.
+     *
+     * @param speedLimit in bytes / second
+     */
+    public static void setSpeedLimit(long speedLimit) {
+        serviceManager.setSpeedLimit(speedLimit);
+    }
+
     public static int getMaxRunningTask() {
         return serviceManager.getMaxRunningTask();
     }
@@ -324,7 +337,7 @@ public abstract class YCDownloader {
     /**
      * @see DownloadTasksChangeListener
      */
-    public static void registerDownlaodTasksChangeListener(DownloadTasksChangeListener downloadTasksChangeListener) {
+    public static void registerDownloadTasksChangeListener(DownloadTasksChangeListener downloadTasksChangeListener) {
         serviceManager.registerDownloadTasksChangeListener(downloadTasksChangeListener);
     }
 

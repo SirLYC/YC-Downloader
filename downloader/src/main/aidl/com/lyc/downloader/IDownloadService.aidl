@@ -42,6 +42,10 @@ interface IDownloadService {
 
     int getMaxRunningTask();
 
+    long getSpeedLimit();
+
+    void setSpeedLimit(long speedLimit);
+
     void setAvoidFrameDrop(boolean avoidFrameDrop);
 
     boolean isAvoidFrameDrop();

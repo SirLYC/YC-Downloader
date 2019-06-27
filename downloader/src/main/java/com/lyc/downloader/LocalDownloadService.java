@@ -4,6 +4,7 @@ import android.app.Service;
 import android.content.Intent;
 import android.os.Binder;
 import android.os.IBinder;
+import android.os.RemoteException;
 import androidx.annotation.Nullable;
 import com.lyc.downloader.db.DownloadInfo;
 
@@ -116,6 +117,16 @@ public class LocalDownloadService extends Service {
         @Override
         public int getMaxRunningTask() {
             return downloadManager.getMaxRunningTask();
+        }
+
+        @Override
+        public long getSpeedLimit() throws RemoteException {
+            return downloadManager.getSpeedLimit();
+        }
+
+        @Override
+        public void setSpeedLimit(long speedLimit) throws RemoteException {
+            downloadManager.setSpeedLimit(speedLimit);
         }
 
         @Override

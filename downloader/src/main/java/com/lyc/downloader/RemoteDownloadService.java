@@ -102,6 +102,16 @@ public class RemoteDownloadService extends Service {
         }
 
         @Override
+        public long getSpeedLimit() {
+            return downloadManager.getSpeedLimit();
+        }
+
+        @Override
+        public void setSpeedLimit(long speedLimit) {
+            downloadManager.setSpeedLimit(speedLimit);
+        }
+
+        @Override
         public void setMaxRunningTask(int count) {
             downloadManager.setMaxRunningTask(count);
         }

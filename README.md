@@ -2,7 +2,7 @@
 
 [![](https://jitpack.io/v/SirLYC/YC-Downloader.svg)](https://jitpack.io/#SirLYC/YC-Downloader)
 
-A multi-thread downloader which supports for HTTP.
+A multi-thread, multi-task and multi-process downloader. It supports HTTP, download speed limit
 
 ## Features
 - [x] HTTP/HTTPS download
@@ -12,6 +12,7 @@ A multi-thread downloader which supports for HTTP.
 - [x] support for HTTP (resume from break-point)
 - [x] message control to avoid ui frame drops 
 - [x] multi-process support
+- [x] download speed limit
 - [ ] other protocol download maybe...
 
 ## Run
@@ -81,7 +82,7 @@ Then Just learn apis!
 You can check all apis in file [YCDownloader.java](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/YCDownloader.java)
 
 
-**start download**
+**Start download**
 ``` java
 private SubmitListener submitListener = new SubmitListener() {
         @Override
@@ -99,7 +100,7 @@ private SubmitListener submitListener = new SubmitListener() {
 YCDownloader.submit(url, path, filename, submitListener);
 ``` 
 
-**listen to download progress or state change**
+**Listen to download progress or state change**
 ``` java
 DownloadListener downloadListener = ...;
 YCDownloader.registerDownloadListener(downloadListener);
@@ -109,7 +110,7 @@ YCDownloader.registerDownloadListener(downloadListener);
 YCDownloader.unregisterDownloadListener(downloadListener);
 ```
 
-**query download info**
+**Query download info**
 ``` java
 // attention: these methods should be called in worker thread
 // query by id
@@ -122,11 +123,21 @@ YCDownloader.queryDeletedDownloadInfoList();
 YCDownloader.queryFinishedDownloadInfoList();
 ```
 
-**other api**
-- set max running task
-- set if you want to avoid main thread receive too much progress update message
-- other... 
+**Configuration**
+``` java
+// limit your running task to 4
+YCDownloader.setMaxRunningTask(4);
 
+// limit your download speed to 512KB
+// param <= 0 means no limit, run as fast as possible
+YCDownloader.setSpeedLimit(512 * 1024);
+
+// if true, the speed of sending progress-update message will slow down
+YCDownloader.setAvoidFrameDrop(true);
+// send progress update message interval at least 500ms
+// only valid when setAvoidFrameDrop(true)
+YCDownloader.setSendMessageInterval(500, TimeUnit.MILLISECONDS);
+```
 
 ## Important classes
 

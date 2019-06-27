@@ -334,6 +334,32 @@ public abstract class BaseServiceManager implements DownloadController, Download
         return null;
     }
 
+    @Override
+    public long getSpeedLimit() {
+        if (downloadService == null) {
+            return 0;
+        }
+        try {
+            return downloadService.getSpeedLimit();
+        } catch (RemoteException e) {
+            Logger.e(getClass().getSimpleName(), "getSpeedLimit", e);
+        }
+
+        return 0;
+    }
+
+    @Override
+    public void setSpeedLimit(long speedLimit) {
+
+        DownloadExecutors.io.execute(() -> {
+            try {
+                downloadService.setSpeedLimit(speedLimit);
+            } catch (RemoteException e) {
+                Logger.e(getClass().getSimpleName(), "setSpeedLimit", e);
+            }
+        });
+    }
+
     void registerDownloadListener(Long id, DownloadListener downloadListener) {
         if (downloadListener != null) {
             DownloadExecutors.command.execute(() -> {

@@ -181,15 +181,11 @@ public class DownloadTask {
             lastModified = response.header("Last-Modified");
 
             filename = downloadInfo.getFilename();
-
-            if (filename == null) {
+            boolean needDecideFilename = filename == null;
+            if (needDecideFilename) {
                 filename = DownloadStringUtil.parseFilenameFromContentDisposition(response.header("Content-Disposition"));
-                if (filename == null) filename = DownloadStringUtil.parseFilenameFromUrl(downloadInfo.getUrl());
-            }
-
-            MediaType mediaType = body.contentType();
-            if (mediaType != null && !filename.endsWith("." + mediaType.subtype())) {
-                filename = filename + "." + mediaType.subtype();
+                if (filename == null)
+                    filename = DownloadStringUtil.parseFilenameFromUrl(response.request().url().toString());
             }
 
 
@@ -254,7 +250,6 @@ public class DownloadTask {
 
         if (!filename.equals(downloadInfo.getFilename())) {
             downloadInfo.setFilename(filename);
-            downloadManager.onDownloadUpdateInfo(downloadInfo);
         }
         downloadInfo.setTotalSize(totalSize);
         downloadInfo.setLastModified(lastModified);

@@ -2,6 +2,7 @@ package com.lyc.downloader.utils;
 
 import org.greenrobot.greendao.annotation.NotNull;
 
+import java.io.File;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.text.DecimalFormat;
@@ -116,9 +117,13 @@ public class DownloadStringUtil {
             url = tmp;
         }
 
+        if (url.endsWith("_")) {
+            url = url.substring(0, url.length() - 1);
+        }
+
         return url.replaceAll("https://", "")
                 .replaceAll("http://", "")
-                .replaceAll("[`~!@#$%^&*()\"\\-+={}':;,\\[\\].<>/?￥…（）_|【】‘；：”“’。，、？\\s]", "_");
+                .replaceAll(File.separator, "_");
     }
 
     private static String removeUrlArgs(String url) {

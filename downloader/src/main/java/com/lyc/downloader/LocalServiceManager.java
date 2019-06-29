@@ -13,8 +13,8 @@ import com.lyc.downloader.utils.Logger;
  */
 class LocalServiceManager extends BaseServiceManager {
 
-    LocalServiceManager(Context context) {
-        super(context);
+    LocalServiceManager(Context context, Configuration configuration) {
+        super(context, configuration);
     }
 
     @Override

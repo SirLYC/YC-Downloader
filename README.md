@@ -54,23 +54,58 @@ dependencies {
 In `manifest`:
 
 ``` xml
-<!--internet access is needed-->
-<uses-permission android:name="android.permission.INTERNET"/>
+<manifest>
+    <!--required-->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!--not required but important-->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    ...
+    <application>
+        ...   
+        <!--One of them is required-->
+        <!--When you want service to run in your app process.-->
+        <service android:name="com.lyc.downloader.LocalDownloadService"/>
+    
+        <!--When you want service to run In another process. Attribute process must be defined and different from you package name-->
+        <service android:name="com.lyc.downloader.RemoteDownloadService"
+                 android:process=":remote"/>
+        ...
+    </application>
+</manifest>
 ```
 
 It's recommended to install in `Application` class
 
-``` java
-public class App extends Application {
-    @Override
-    public void onCreate() {
-        super.onCreate();
-        // multi process
-        YCDownloader.install(this, true);
-        // single process
-//        YCDownloader.install(this, false);
-        // or
-//        YCDownloader.install(this);
+``` kotlin
+class App : Application() {
+    override fun onCreate() {
+        super.onCreate()
+
+        val config = Configuration.Builder()
+            // If service running in another process;
+            // Default value:
+            // Decided by service in your manifest;
+            // If both remote and local services are defined in your manifest,
+            // remote one will be selected;
+            .setMultiProcess(true)
+            // If allow download. Default true;
+            .setAllowDownload(true)
+            // If avoid frame drop. Default true;
+            .setAvoidFrameDrop(true)
+            // Default 4;
+            .setMaxRunningTask(4)
+            // Send progress update message to main thread interval time in nano. Default 333ms;
+            .setSendMessageIntervalNanos(TimeUnit.MILLISECONDS.toNanos(333))
+            // Speed limit. If <= 0, no limit;
+            .setSpeedLimit(1024)
+            .build()
+
+        YCDownloader.install(this, config)
+
+        // multiProcess is selected by YCDownloader;
+        // Other params are default values;
+//        YCDownloader.install(this)
     }
 }
 ```
@@ -137,6 +172,12 @@ YCDownloader.setAvoidFrameDrop(true);
 // send progress update message interval at least 500ms
 // only valid when setAvoidFrameDrop(true)
 YCDownloader.setSendMessageInterval(500, TimeUnit.MILLISECONDS);
+
+// If false, all running tasks are in WAITING state
+YCDownloaer.setAllowDownload(true)
+
+// Use configuration to update
+YCDownloader.updateByConfiguration(Configuration);
 ```
 
 ## Important classes
@@ -156,6 +197,10 @@ Callback of the change in downloadTasks: created or removed. It's a good feature
 **DownloadInfo**: [`com.lyc.downloader.db.DownloadInfo`](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/db/DownloadInfo.java)
 
 Database entity, also `Parcelable` to pass between **multi-process**.
+
+**Configuration**: [`com.lyc.downloader.Configuration`](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/Configuration.java)
+
+An immutable class to pass params of downloader.
 
 ## Permissions
 

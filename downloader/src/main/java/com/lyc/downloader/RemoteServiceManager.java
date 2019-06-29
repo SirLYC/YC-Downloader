@@ -1,5 +1,6 @@
 package com.lyc.downloader;
 
+import android.app.ActivityManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -12,10 +13,9 @@ import com.lyc.downloader.utils.Logger;
  * Created by Liu Yuchuan on 2019/5/19.
  */
 class RemoteServiceManager extends BaseServiceManager {
-    private boolean inServerProcess;
 
-    RemoteServiceManager(Context context) {
-        super(context);
+    RemoteServiceManager(Context context, Configuration configuration) {
+        super(context, configuration);
     }
 
     @Override
@@ -43,11 +43,7 @@ class RemoteServiceManager extends BaseServiceManager {
 
     @Override
     public void connectToService() {
-        String processName = getProcessName(appContext);
-        if (processName.endsWith("yc_downloader")) {
-            inServerProcess = true;
-        } else {
-            inServerProcess = false;
+        if (!inServerProcess) {
             Intent intent = new Intent(appContext, RemoteDownloadService.class);
             if (appContext.bindService(intent, downloadServiceConnection, Context.BIND_AUTO_CREATE)) {
                 Logger.d("RemoteServiceManager", "try to connect to download service");
@@ -59,6 +55,21 @@ class RemoteServiceManager extends BaseServiceManager {
 
     @Override
     boolean isInServerProcess() {
-        return inServerProcess;
+        int pid = android.os.Process.myPid();
+        ActivityManager activityService = (ActivityManager) appContext
+                .getSystemService(Context.ACTIVITY_SERVICE);
+        String processName = null;
+        for (ActivityManager.RunningAppProcessInfo runningAppProcess : activityService.getRunningAppProcesses()) {
+            if (runningAppProcess.pid == pid) {
+                processName = runningAppProcess.processName;
+            }
+        }
+        if (processName == null) {
+            Logger.e("YCDownloader", "cannot get process name");
+            return false;
+        }
+
+        Logger.d("RemoteServiceManager", "In server process: " + processName.equals(YCDownloader.serverProcessName));
+        return processName.equals(YCDownloader.serverProcessName);
     }
 }

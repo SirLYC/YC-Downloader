@@ -46,9 +46,13 @@ interface IDownloadService {
 
     void setSpeedLimit(long speedLimit);
 
-    void setAvoidFrameDrop(boolean avoidFrameDrop);
+    boolean isAllowDownload();
+
+    void setAllowDownload(boolean allowDownload);
 
     boolean isAvoidFrameDrop();
+
+    void setAvoidFrameDrop(boolean avoidFrameDrop);
 
     // time unit: ms
     void setSendMessageIntervalNanos(long time);

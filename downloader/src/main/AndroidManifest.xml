@@ -1,7 +1,1 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.lyc.downloader">
-    <application>
-        <service android:name=".RemoteDownloadService"
-                 android:process=":yc_downloader"/>
-        <service android:name=".LocalDownloadService"/>
-    </application>
-</manifest>
+<manifest package="com.lyc.downloader"/>

@@ -2,13 +2,16 @@ package com.lyc.downloader;
 
 import android.Manifest;
 import android.Manifest.permission;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.content.pm.ServiceInfo;
 import android.os.Looper;
 import android.util.Log;
 import androidx.annotation.WorkerThread;
 import androidx.core.content.ContextCompat;
 import com.lyc.downloader.db.DownloadInfo;
+import com.lyc.downloader.utils.Logger;
 
 import java.util.List;
 import java.util.Set;
@@ -31,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 public abstract class YCDownloader {
     private static BaseServiceManager serviceManager;
     private static boolean installed;
+    static String serverProcessName;
 
     private static final String TAG = "YCDownloader";
 
@@ -67,9 +71,83 @@ public abstract class YCDownloader {
         }
     }
 
+    private static void installInner(Context appContext, Configuration configuration, ServiceInfo serviceInfo) {
+        checkPermissions(appContext);
+
+        if (configuration.multiProcess) {
+            if (serviceInfo == null) {
+                serviceInfo = getRemoteServiceInfoOrNull(appContext);
+                if (serviceInfo == null) {
+                    throw new RuntimeException("Have you ever register com.lyc.downloader.RemoteDownloadService in your manifest?");
+                }
+            }
+            serverProcessName = serviceInfo.processName;
+            serviceManager = new RemoteServiceManager(appContext, configuration);
+        } else {
+            if (serviceInfo == null) {
+                serviceInfo = getLocalServiceInfoOrNull(appContext);
+                if (serviceInfo == null) {
+                    throw new RuntimeException("Have you ever register com.lyc.downloader.LocalDownloadService in your manifest?");
+                }
+            }
+            serverProcessName = serviceInfo.processName;
+            serviceManager = new LocalServiceManager(appContext, configuration);
+        }
+        installed = true;
+    }
+
+    private static ServiceInfo getRemoteServiceInfoOrNull(Context appContext) {
+        ServiceInfo remoteServiceInfo = null;
+        try {
+            remoteServiceInfo = appContext.getPackageManager().getServiceInfo(new ComponentName(appContext, RemoteDownloadService.class.getName()), 0);
+        } catch (PackageManager.NameNotFoundException e) {
+            // ignore
+        }
+        if (remoteServiceInfo != null && remoteServiceInfo.processName.equals(appContext.getPackageName())) {
+            throw new RuntimeException("com.lyc.downloader.RemoteDownloadService should be defined in a new process.");
+        }
+        return remoteServiceInfo;
+    }
+
+    private static ServiceInfo getLocalServiceInfoOrNull(Context appContext) {
+        ServiceInfo localServiceInfo = null;
+        try {
+            localServiceInfo = appContext.getPackageManager().getServiceInfo(new ComponentName(appContext, LocalDownloadService.class.getName()), 0);
+        } catch (PackageManager.NameNotFoundException e) {
+            // ignore
+        }
+        if (localServiceInfo != null && !localServiceInfo.processName.equals(appContext.getPackageName())) {
+            throw new RuntimeException("com.lyc.downloader.LocalDownloadService should not be defined in a new process.");
+        }
+
+        return localServiceInfo;
+    }
+
+
     /*--------------------------------------- install ---------------------------------------*/
     public static void install(Context context) {
-        install(context, false);
+        if (installed) return;
+        if (Thread.currentThread() != Looper.getMainLooper().getThread()) {
+            throw new IllegalStateException("Only main thread can YCDownload be installed!");
+        }
+        Context appContext = context.getApplicationContext();
+        final ServiceInfo remoteServiceInfo = getRemoteServiceInfoOrNull(appContext);
+        final ServiceInfo localServiceInfo = getLocalServiceInfoOrNull(appContext);
+
+        final Configuration.Builder builder = new Configuration.Builder();
+
+        if (localServiceInfo == null && remoteServiceInfo == null) {
+            throw new RuntimeException("One of com.lyc.downloader.RemoteDownloadService or com.lyc.downloader.LocalDownloadService should be defined in manifest.");
+        }
+
+        builder.setMultiProcess(remoteServiceInfo != null);
+        final Configuration config = builder.build();
+        final ServiceInfo serviceInfo = config.multiProcess ? remoteServiceInfo : localServiceInfo;
+
+        //noinspection ConstantConditions
+        Logger.d("YCDownloader", "Auto choose service: " + serviceInfo.name);
+
+        installInner(context, config, serviceInfo);
     }
 
     /**
@@ -77,22 +155,12 @@ public abstract class YCDownloader {
      *
      * @param context cannot be null; and it should be related to application context
      */
-    public static void install(Context context, boolean multiProcess) {
-        if (installed) {
-            return;
-        }
+    public static void install(Context context, Configuration configuration) {
+        if (installed) return;
         if (Thread.currentThread() != Looper.getMainLooper().getThread()) {
-            throw new UnsupportedOperationException("cannot install YCDownloader in worker thread");
+            throw new IllegalStateException("Only main thread can YCDownload install!");
         }
-
-        checkPermissions(context);
-
-        if (multiProcess) {
-            serviceManager = new RemoteServiceManager(context);
-        } else {
-            serviceManager = new LocalServiceManager(context);
-        }
-        installed = true;
+        installInner(context.getApplicationContext(), configuration, null);
     }
 
     /*---------------------------------------- api ----------------------------------------*/
@@ -283,6 +351,22 @@ public abstract class YCDownloader {
         return serviceManager.getMaxSupportRunningTask();
     }
 
+    /**
+     * If allowDownload maxRunningTask is only restricted by {@link #getMaxRunningTask()},
+     * else all running tasks are in waiting state.
+     * This param is useful when user not allow app to download in operator network mode.
+     */
+    public static boolean isAllowDownload() {
+        return serviceManager.isAllowDownload();
+    }
+
+    /**
+     * @see #isAllowDownload()
+     */
+    public static void setAllowDownload(boolean allowDownload) {
+        serviceManager.setAllowDownload(allowDownload);
+    }
+
     public static boolean isAvoidFrameDrop() {
         return serviceManager.isAvoidFrameDrop();
     }
@@ -305,6 +389,13 @@ public abstract class YCDownloader {
 
     public static long getSendMessageIntervalNanos() {
         return serviceManager.getSendMessageIntervalNanos();
+    }
+
+    /**
+     * This method is more efficient if you want to update many params in one-time.
+     */
+    public static void updateByConfiguration(Configuration configuration) {
+        serviceManager.updateByConfiguration(configuration);
     }
 
     /**
@@ -349,6 +440,6 @@ public abstract class YCDownloader {
     }
 
     public static boolean isInServerProcess() {
-        return serviceManager.isInServerProcess();
+        return serviceManager.inServerProcess;
     }
 }

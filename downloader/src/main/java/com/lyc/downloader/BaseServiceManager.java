@@ -1,6 +1,5 @@
 package com.lyc.downloader;
 
-import android.app.ActivityManager;
 import android.content.Context;
 import android.content.ServiceConnection;
 import android.os.IBinder.DeathRecipient;
@@ -27,6 +26,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
     IDownloadService downloadService;
     final CountDownLatch countDownLatch = new CountDownLatch(1);
     ServiceConnection downloadServiceConnection;
+    final boolean inServerProcess;
     private final IDownloadTasksChangeCallback downloadTasksChangeCallback = new IDownloadTasksChangeCallback.Stub() {
         @Override
         public void onNewDownloadTaskArrive(DownloadInfo downloadInfo) {
@@ -65,23 +65,15 @@ public abstract class BaseServiceManager implements DownloadController, Download
         }
     };
 
-    BaseServiceManager(Context appContext) {
-        DownloadExecutors.init();
+    BaseServiceManager(Context appContext, Configuration configuration) {
         this.appContext = appContext.getApplicationContext();
+        inServerProcess = isInServerProcess();
+        DownloadExecutors.init();
+        if (inServerProcess) {
+            DownloadManager.init(appContext, configuration);
+        }
         initServiceConnection();
         connectToService();
-    }
-
-    static String getProcessName(Context applicationContext) {
-        int pid = android.os.Process.myPid();
-        ActivityManager activityService = (ActivityManager) applicationContext
-                .getSystemService(Context.ACTIVITY_SERVICE);
-        for (ActivityManager.RunningAppProcessInfo runningAppProcess : activityService.getRunningAppProcesses()) {
-            if (runningAppProcess.pid == pid) {
-                return runningAppProcess.processName;
-            }
-        }
-        throw new IllegalStateException("cannot find process of application!");
     }
 
     abstract void connectToService();
@@ -225,6 +217,32 @@ public abstract class BaseServiceManager implements DownloadController, Download
     }
 
     @Override
+    public boolean isAllowDownload() {
+        if (downloadService == null) {
+            return true;
+        }
+        try {
+            return downloadService.isAvoidFrameDrop();
+        } catch (RemoteException e) {
+            Logger.e(getClass().getSimpleName(), "isAllowDownload", e);
+        }
+
+        return true;
+    }
+
+    @Override
+    public void setAllowDownload(boolean allowDownload) {
+        DownloadExecutors.command.execute(() -> {
+            waitingForConnection();
+            try {
+                downloadService.setAllowDownload(allowDownload);
+            } catch (RemoteException e) {
+                Logger.e(getClass().getSimpleName(), "setAllowDownload", e);
+            }
+        });
+    }
+
+    @Override
     public boolean isAvoidFrameDrop() {
         if (downloadService == null) {
             return false;
@@ -313,7 +331,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
         try {
             return downloadService.queryDeletedDownloadInfoList();
         } catch (RemoteException e) {
-            Logger.e(getClass().getSimpleName(), "cannot queryDeletedDownloadInfoList", e);
+            Logger.e(getClass().getSimpleName(), "queryDeletedDownloadInfoList", e);
         }
 
         return null;
@@ -328,7 +346,7 @@ public abstract class BaseServiceManager implements DownloadController, Download
         try {
             return downloadService.queryFinishedDownloadInfoList();
         } catch (RemoteException e) {
-            Logger.e(getClass().getSimpleName(), "cannot queryFinishedDownloadInfoList", e);
+            Logger.e(getClass().getSimpleName(), "queryFinishedDownloadInfoList", e);
         }
 
         return null;
@@ -351,13 +369,29 @@ public abstract class BaseServiceManager implements DownloadController, Download
     @Override
     public void setSpeedLimit(long speedLimit) {
 
-        DownloadExecutors.io.execute(() -> {
+        DownloadExecutors.command.execute(() -> {
             try {
                 downloadService.setSpeedLimit(speedLimit);
             } catch (RemoteException e) {
                 Logger.e(getClass().getSimpleName(), "setSpeedLimit", e);
             }
         });
+    }
+
+    void updateByConfiguration(Configuration configuration) {
+        if (configuration != null) {
+            DownloadExecutors.command.execute(() -> {
+                try {
+                    downloadService.setAllowDownload(configuration.allowDownload);
+                    downloadService.setAvoidFrameDrop(configuration.avoidFrameDrop);
+                    downloadService.setMaxRunningTask(configuration.maxRunningTask);
+                    downloadService.setSendMessageIntervalNanos(configuration.sendMessageIntervalNanos);
+                    downloadService.setSpeedLimit(configuration.speedLimit);
+                } catch (RemoteException e) {
+                    Logger.e(getClass().getSimpleName(), "updateByConfiguration", e);
+                }
+            });
+        }
     }
 
     void registerDownloadListener(Long id, DownloadListener downloadListener) {

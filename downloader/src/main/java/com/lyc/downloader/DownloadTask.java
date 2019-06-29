@@ -109,7 +109,7 @@ public class DownloadTask {
         this.downloadInfo = downloadInfo;
         this.client = client;
         // init by download manager
-        // in a single thread
+        // in a single thread context
         state = downloadInfo.getDownloadItemState();
         downloadSize.set(downloadInfo.getDownloadedSize());
     }

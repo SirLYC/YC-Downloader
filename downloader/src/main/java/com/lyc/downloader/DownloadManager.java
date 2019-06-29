@@ -24,7 +24,6 @@ import java.util.Date;
 import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -55,25 +54,32 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     private final Lock downloadTasksChangeCallbackSetLock = new ReentrantLock();
     private IDownloadCallback downloadCallback;
     private IDownloadTasksChangeCallback downloadTasksChangeCallback;
-    private int maxRunningTask;
-    private long speedLimit;
-    private volatile boolean avoidFrameDrop = true;
 
     private CountDownLatch recoverCountDownLatch = new CountDownLatch(1);
-    // ns
-    private volatile long sendMessageIntervalNanos = TimeUnit.MILLISECONDS.toNanos(333);
 
-    private DownloadManager(OkHttpClient client, Context appContext) {
+    /* --------------------------------- config ---------------------------------*/
+    private volatile int maxRunningTask;
+    private volatile long speedLimit;
+    private boolean allowDownload;
+    private volatile boolean avoidFrameDrop;
+    // ns
+    private volatile long sendMessageIntervalNanos;
+
+    private DownloadManager(OkHttpClient client, Context appContext, Configuration configuration) {
+        maxRunningTask = configuration.maxRunningTask;
+        speedLimit = configuration.speedLimit;
+        allowDownload = configuration.allowDownload;
+        avoidFrameDrop = configuration.avoidFrameDrop;
+        sendMessageIntervalNanos = configuration.sendMessageIntervalNanos;
         this.client = client;
         SQLiteDatabase db = new DevOpenHelper(appContext, DB_NAME).getWritableDatabase();
         daoSession = new DaoMaster(db).newSession();
-        maxRunningTask = 4;
         Logger.d("DownloadManager", "DownloadManager: maxRunningTask = " + maxRunningTask);
         recoverDownloadTasks();
     }
 
 
-    static void init(Context context) {
+    static void init(Context context, Configuration configuration) {
         if (instance == null) {
             synchronized (DownloadManager.class) {
                 if (instance == null) {
@@ -83,7 +89,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                     HttpLoggingInterceptor httpLoggingInterceptor = new HttpLoggingInterceptor();
                     httpLoggingInterceptor.setLevel(Level.HEADERS);
                     OkHttpClient client = new Builder().addInterceptor(httpLoggingInterceptor).build();
-                    instance = new DownloadManager(client, context);
+                    instance = new DownloadManager(client, context, configuration);
                 }
             }
         }
@@ -170,7 +176,20 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
         });
     }
 
+    private void doOnMessageAfterRecover(Runnable runnable) {
+        if (recoverCountDownLatch.getCount() == 0) {
+            runnable.run();
+        } else {
+            DownloadExecutors.io.execute(() -> {
+                waitForRecovering();
+                DownloadExecutors.message.execute(runnable);
+            });
+        }
+    }
+
     private void schedule() {
+
+        int maxRunningTask = allowDownload ? this.maxRunningTask : 0;
 
         while (runningTasksId.size() > maxRunningTask) {
             Long id = runningTasksId.pollFirst();
@@ -579,13 +598,8 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     @Override
     public void setMaxRunningTask(int count) {
         if (maxRunningTask != count) {
-            DownloadExecutors.message.execute(() -> {
+            doOnMessageAfterRecover(() -> {
                 maxRunningTask = count;
-                try {
-                    throw new Exception();
-                } catch (Exception e) {
-                    Logger.d("DownloadManager", "MaxRunningTask = " + maxRunningTask, e);
-                }
                 schedule();
             });
         }
@@ -598,7 +612,22 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
 
     @Override
     public void setSpeedLimit(long speedLimit) {
-        this.speedLimit = speedLimit;
+        DownloadExecutors.message.execute(() -> this.speedLimit = speedLimit);
+    }
+
+    @Override
+    public boolean isAllowDownload() {
+        return allowDownload;
+    }
+
+    @Override
+    public void setAllowDownload(boolean allowDownload) {
+        if (this.allowDownload != allowDownload) {
+            doOnMessageAfterRecover(() -> {
+                this.allowDownload = allowDownload;
+                schedule();
+            });
+        }
     }
 
     public boolean isAvoidFrameDrop() {
@@ -607,9 +636,9 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
 
     public void setAvoidFrameDrop(boolean avoidFrameDrop) {
         if (this.avoidFrameDrop != avoidFrameDrop) {
-            DownloadExecutors.io.execute(() -> {
+            DownloadExecutors.message.execute(() -> {
                 this.avoidFrameDrop = avoidFrameDrop;
-                if (!this.avoidFrameDrop) {
+                if (!avoidFrameDrop) {
                     lastSendMessageTime.clear();
                 }
             });
@@ -621,7 +650,9 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     }
 
     public void setSendMessageIntervalNanos(long time) {
-        this.sendMessageIntervalNanos = time;
+        if (sendMessageIntervalNanos != time) {
+            DownloadExecutors.message.execute(() -> sendMessageIntervalNanos = time);
+        }
     }
 
     @Override

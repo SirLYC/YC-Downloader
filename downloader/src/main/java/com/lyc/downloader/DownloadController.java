@@ -26,6 +26,10 @@ public interface DownloadController {
 
     void setSpeedLimit(long speedLimit);
 
+    boolean isAllowDownload();
+
+    void setAllowDownload(boolean allowDownload);
+
     boolean isAvoidFrameDrop();
 
     void setAvoidFrameDrop(boolean avoidFrameDrop);

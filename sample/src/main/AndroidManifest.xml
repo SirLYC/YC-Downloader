@@ -22,6 +22,15 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-    </application>
 
+
+        <!--One of them is required-->
+
+        <!--When you want to run in your app process.-->
+        <service android:name="com.lyc.downloader.LocalDownloadService"/>
+
+        <!--In another process. Attribute process must be defined and different from you package name-->
+        <service android:name="com.lyc.downloader.RemoteDownloadService"
+                 android:process=":remote"/>
+    </application>
 </manifest>

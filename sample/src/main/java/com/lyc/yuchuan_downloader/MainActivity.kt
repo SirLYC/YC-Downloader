@@ -14,6 +14,7 @@ import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProviders
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.SimpleItemAnimator
+import com.lyc.downloader.Configuration
 import com.lyc.downloader.DownloadTask.*
 import com.lyc.downloader.YCDownloader
 import com.lyc.yuchuan_downloader.util.ReactiveAdapter
@@ -63,6 +64,7 @@ class MainActivity : AppCompatActivity(), TextWatcher, DownloadItemViewBinder.On
                 }
             }
         }
+
         rv.layoutManager = LinearLayoutManager(this)
         adapter = ReactiveAdapter(mainViewModel.itemList).apply {
             register(String::class, GroupHeaderItemViewBinder())
@@ -81,9 +83,9 @@ class MainActivity : AppCompatActivity(), TextWatcher, DownloadItemViewBinder.On
             Toast.makeText(this, it, Toast.LENGTH_SHORT).show()
         })
 
-        val list = (0..YCDownloader.getMaxSupportRunningTask()).toList()
+        val list = (0..(Configuration.MAX_SUPPORT_TASK_COUNT)).toList()
 
-        spinner.adapter = ArrayAdapter<Int>(
+        spinner.adapter = ArrayAdapter(
             this,
             android.R.layout.simple_spinner_dropdown_item,
             list

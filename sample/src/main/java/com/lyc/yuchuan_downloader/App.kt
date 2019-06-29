@@ -18,7 +18,7 @@ class App : Application() {
             // Decided by service in your manifest;
             // If both remote and local services are defined in your manifest,
             // remote one will be selected;
-            .setMultiProcess(true)
+            .setMultiProcess(false)
             // If allow download. Default true;
             .setAllowDownload(true)
             // If avoid frame drop. Default true;

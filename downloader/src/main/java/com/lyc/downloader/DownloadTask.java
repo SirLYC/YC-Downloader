@@ -883,7 +883,6 @@ public class DownloadTask {
         private void cancelRequest() {
             try {
                 stateLock.lock();
-                closeInputStream();
                 if (call != null) {
                     call.cancel();
                 }
@@ -984,9 +983,17 @@ public class DownloadTask {
                         retryCount = 0;
                         success = true;
                     } catch (IOException e) {
+                        try {
+                            stateLock.lock();
+                            if (deleted.get() || (state == RUNNING || state == CONNECTING)) {
+                                return;
+                            }
+                        } finally {
+                            stateLock.unlock();
+                        }
                         Logger.e("DownloadTask", "Connect error! retry=" + retryCount, e);
                     }
-                } while (retryCount-- > 0 && !deleted.get());
+                } while (retryCount-- > 0 && !deleted.get() && (state == RUNNING || state == CONNECTING));
 
                 if (!success) {
                     reportError(DownloadError.ERROR_CONNECT);

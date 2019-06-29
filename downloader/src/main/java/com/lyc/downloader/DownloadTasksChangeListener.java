@@ -10,7 +10,7 @@ import com.lyc.downloader.db.DownloadInfo;
 public interface DownloadTasksChangeListener {
 
     /**
-     * notified when a new download Task is added to
+     * Notified when a new download Task is added to
      * {@link DownloadManager}
      *
      * @param downloadInfo new-added info about download task
@@ -18,7 +18,7 @@ public interface DownloadTasksChangeListener {
     void onNewDownloadTaskArrive(DownloadInfo downloadInfo);
 
     /**
-     * notified when a download task is deleted
+     * Notified when a download task is deleted
      *
      * @param id the id of the download task
      */

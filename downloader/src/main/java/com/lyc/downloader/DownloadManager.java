@@ -421,14 +421,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                     } catch (RemoteException e) {
                         Logger.e(TAG, "submitSuccess", e);
                     }
-                    IDownloadTasksChangeCallback downloadTasksChangeCallback = this.downloadTasksChangeCallback;
-                    if (downloadTasksChangeCallback != null) {
-                        try {
-                            downloadTasksChangeCallback.onNewDownloadTaskArrive(downloadInfo);
-                        } catch (RemoteException e) {
-                            Logger.e(TAG, "onNewDownloadTaskArrive", e);
-                        }
-                    }
+                    notifyDownloadManagerArrive(downloadInfo);
                     schedule();
                 } else {
                     try {
@@ -490,7 +483,8 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
     public void startOrResume(long id, boolean restart) {
         DownloadExecutors.message.execute(() -> {
             DownloadTask downloadTask = taskTable.get(id);
-            if (downloadTask == null && restart) {
+            final DownloadInfo info = infoTable.get(id);
+            if ((downloadTask == null || info == null) && restart) {
                 DownloadExecutors.io.execute(() -> {
                     DownloadInfo downloadInfo = daoSession.getDownloadInfoDao().load(id);
                     if (downloadInfo != null) {
@@ -498,15 +492,44 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                             DownloadTask newDownloadTask = new DownloadTask(downloadInfo, client);
                             taskTable.put(id, newDownloadTask);
                             infoTable.put(id, downloadInfo);
+                            notifyDownloadManagerArrive(downloadInfo);
                             enqueueTask(id, true, true);
                         });
                     }
                 });
             } else if (downloadTask != null && ((pausingTasksId.remove(id) | errorTasksId.remove(id)) ||
                     downloadTask.getState() == FINISH)) {
+                if (restart) {
+                    info.setDownloadedSize(0);
+                    info.setTotalSize(0);
+                    info.setLastModified(null);
+                    onDownloadUpdateInfo(info);
+                }
                 enqueueTask(id, restart, true);
             }
         });
+    }
+
+    private void notifyDownloadManagerArrive(DownloadInfo info) {
+        try {
+            final IDownloadTasksChangeCallback downloadTasksChangeCallback = this.downloadTasksChangeCallback;
+            if (downloadTasksChangeCallback != null) {
+                downloadTasksChangeCallback.onNewDownloadTaskArrive(info);
+            }
+        } catch (RemoteException e) {
+            Logger.e("DownloadManager", "onNewDownloadTaskArrive", e);
+        }
+    }
+
+    private void notifyDownloadInfoRemoved(long id) {
+        final IDownloadTasksChangeCallback downloadTasksChangeCallback = this.downloadTasksChangeCallback;
+        if (downloadTasksChangeCallback != null) {
+            try {
+                downloadTasksChangeCallback.onDownloadTaskRemove(id);
+            } catch (RemoteException e) {
+                Logger.e("DownloadManager", "onNewDownloadTaskArrive", e);
+            }
+        }
     }
 
     @Override
@@ -525,14 +548,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
             DownloadTask downloadTask = taskTable.get(id);
             if (downloadTask == null) return;
             downloadTask.cancel();
-            IDownloadTasksChangeCallback downloadTasksChangeCallback = this.downloadTasksChangeCallback;
-            if (downloadTasksChangeCallback != null) {
-                try {
-                    downloadTasksChangeCallback.onDownloadTaskRemove(id);
-                } catch (RemoteException e) {
-                    Logger.e(TAG, "onDownloadTaskRemove", e);
-                }
-            }
+            notifyDownloadInfoRemoved(id);
         });
     }
 
@@ -567,14 +583,7 @@ class DownloadManager implements DownloadListener, DownloadController, DownloadI
                 errorTasksId.remove(id);
                 pausingTasksId.remove(id);
                 downloadTask.delete(deleteFile);
-                IDownloadTasksChangeCallback downloadTasksChangeCallback = this.downloadTasksChangeCallback;
-                if (downloadTasksChangeCallback != null) {
-                    try {
-                        downloadTasksChangeCallback.onDownloadTaskRemove(id);
-                    } catch (RemoteException e) {
-                        Logger.e(TAG, "onDownloadTaskRemove", e);
-                    }
-                }
+                notifyDownloadInfoRemoved(id);
                 schedule();
             } else {
                 Logger.w("DownloadManager", "delete a task that is not present in DownloadManager! find in db. id = " + id);

@@ -27,8 +27,9 @@ class App : Application() {
             .setMaxRunningTask(4)
             // Send progress update message to main thread interval time in nano. Default 333ms;
             .setSendMessageIntervalNanos(TimeUnit.MILLISECONDS.toNanos(333))
-            // Speed limit. If <= 0, no limit;
-            .setSpeedLimit(1024)
+            // Speed limit(bytes/s). If <= 0, no limit;
+//            .setSpeedLimit(2048 * 1024)
+            .setSpeedLimit(0)
             .build()
 
         YCDownloader.install(this, config)

@@ -2,36 +2,32 @@
 
 [![](https://jitpack.io/v/SirLYC/YC-Downloader.svg)](https://jitpack.io/#SirLYC/YC-Downloader)
 
-[中文文档](https://github.com/SirLYC/YC-Downloader/blob/master/README-zh.md)
-
-A multi-thread, multi-task and multi-process downloader. It supports HTTP, download speed limit
+多线程、多任务、多进程下载库，支持断点续传、限速等...
 
 ## Features
-- [x] HTTP/HTTPS download
-- [x] multi-thread download
-- [x] download thread and disk-io thread separated
-- [x] multi download task
-- [x] support for HTTP (resume from break-point)
-- [x] message control to avoid ui frame drops 
-- [x] multi-process support
-- [x] download speed limit
-- [x] auto-retry(connect and download)
-- [ ] other protocol download maybe...
+- [x] HTTP/HTTPS下载
+- [x] 多线程下载
+- [x] 下载（生产者）线程与写磁盘（消费者）线程分离
+- [x] 多任务管理
+- [x] 断点续传
+- [x] 消息控制避免UI卡顿
+- [x] 多进程支持
+- [x] 下载限速
+- [x] 自动重试（下载和连接）
+- [ ] 有时间支持其他协议下载...
 
-## Project
+## 项目
 **`sample` module** 
     
-    A simple apk instance which uses download library.
+    一个用该库实现的简单app，显示了库的特性。
 
 **`downloader` module**
     
-    Download library.
+    下载库。
 
 
-## Install
-**Step 1.** Add the JitPack repository to your build file
-
-Add it in your root build.gradle at the end of repositories:
+## 集成
+**Step 1.** 添加JitPack repository到根目录的build.gradle
 
 ``` groovy
 allprojects {
@@ -42,7 +38,7 @@ allprojects {
 }
 ```
 
-**Step 2.** Add the dependency
+**Step 2.** 添加依赖
 
 ``` groovy
 dependencies {
@@ -52,25 +48,25 @@ dependencies {
 
 > [Check release notes here](https://github.com/SirLYC/YC-Downloader/releases)
 
-**Step3.** Install YCDownloader
+**Step3.** 安装库
 
-In `manifest`:
+在`manifest`文件中:
 
 ``` xml
 <manifest>
-    <!--required-->
+    <!--必须有-->
     <uses-permission android:name="android.permission.INTERNET"/>
-    <!--not required but important-->
+    <!--没有会影响正常运行。6.0以上需要验证运行时权限-->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
     ...
     <application>
         ...   
-        <!--One of them is required-->
-        <!--When you want service to run in your app process.-->
+        <!--下面两个中至少一个需要添加，根据需要添加即可-->
+        <!--只需要在app的主进程运行时，添加这个Service-->
         <service android:name="com.lyc.downloader.LocalDownloadService"/>
     
-        <!--When you want service to run In another process. Attribute process must be defined and different from you package name-->
+        <!--当需要在另一个进程添加下载服务时，需要添加这个。进程名可任意指定，但不能是包名-->
         <service android:name="com.lyc.downloader.RemoteDownloadService"
                  android:process=":remote"/>
         ...
@@ -78,7 +74,7 @@ In `manifest`:
 </manifest>
 ```
 
-It's recommended to install in `Application` class
+推荐在`Application`中集成
 
 ``` kotlin
 class App : Application() {
@@ -86,44 +82,44 @@ class App : Application() {
         super.onCreate()
 
         val config = Configuration.Builder()
-            // If service running in another process;
-            // Default value:
-            // Decided by service in your manifest;
-            // If both remote and local services are defined in your manifest,
-            // remote one will be selected;
+            // 是否使用多进程
+            // 如果使用YCDownloader.install(Context)
+            // 这个参数的值由你在manifest中指定的Service为准
+            // 如果都指定了，为true
+            // 如果使用YCDownloader.install(Context, Configuration)
+            // 传入参数对应的Service必须指定
             .setMultiProcess(false)
-            // If allow download. Default true;
+            // 是否允许下载，如果不允许，所有任务都在等待状态
+            // 这个参数可以用来做运营商网络等待wifi连接
             .setAllowDownload(true)
-            // If avoid frame drop. Default true;
+            // 是否控制进度更新消息
             .setAvoidFrameDrop(true)
-            // Default 4;
+            // 最大同时运行任务数量
             .setMaxRunningTask(4)
-            // Send progress update message to main thread interval time in nano. Default 333ms;
+            // 通过Listener接收进度更新消息间隔，纳秒为单位
             .setSendMessageIntervalNanos(TimeUnit.MILLISECONDS.toNanos(333))
-            // Speed limit(bytes/s). If <= 0, no limit;
+            // 限速，字节/秒为单位。如果传0或没有设置，不限速
 //            .setSpeedLimit(2048 * 1024)
             .setSpeedLimit(0)
             .build()
 
         YCDownloader.install(this, config)
 
-        // multiProcess is selected by YCDownloader;
-        // Other params are default values;
 //        YCDownloader.install(this)
     }
 }
 ```
 
-## Proguard
+## 混淆配置
 
-`Proguard` is already defined in the library, you don't have to specify for this library.
+`Proguard` 已经在依赖中配置，无须单独配置。
 
-## Main API
+## 主要API
 
-You can check all apis in file [YCDownloader.java](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/YCDownloader.java)
+所有的API都可以在这个文件中看到： [YCDownloader.java](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/YCDownloader.java)
 
 
-**Start download**
+**提交任务**
 ``` java
 private SubmitListener submitListener = new SubmitListener() {
         @Override
@@ -136,24 +132,24 @@ private SubmitListener submitListener = new SubmitListener() {
             Log.e("Submit", "submit failed", e);
         }
 };
-// path: parent directory to store your file
-// filename: can be null; if not null, downloader will use it to save your file
+// path: 存储文件的路径
+// filename: 可以是null；当为null时，文件名由下载器决定
 YCDownloader.submit(url, path, filename, submitListener);
 ``` 
 
-**Listen to download progress or state change**
+**监听下载进度**
 ``` java
 DownloadListener downloadListener = ...;
 YCDownloader.registerDownloadListener(downloadListener);
 
-// you should unregister it to avoid memory leak
-// such as Activity.OnDestroy
+// 及时注销避免内存泄漏
+// 比如在Activity.OnDestroy
 YCDownloader.unregisterDownloadListener(downloadListener);
 ```
 
-**Query download info**
+**查询任务信息**
 ``` java
-// attention: these methods should be called in worker thread
+// 注意：这些方法不能再主线程使用
 // query by id
 YCDownloader.queryDownloadInfo(long id);
 // state != CANCELED && state != FINISH
@@ -164,28 +160,26 @@ YCDownloader.queryDeletedDownloadInfoList();
 YCDownloader.queryFinishedDownloadInfoList();
 ```
 
-**Configuration**
+**配置**
 
-You can change configurations when downloader is running.These methods are safe to call in any thread.
+在下载器运行时，一些配置是可以改变的。这些方法都是线程安全的。
 
 ``` java
-// limit your running task to 4
+// 最大任务数设置为4
 YCDownloader.setMaxRunningTask(4);
 
-// limit your download speed to 512KB
-// param <= 0 means no limit, run as fast as possible
+// 限速512KB/s
 YCDownloader.setSpeedLimit(512 * 1024);
 
-// if true, the speed of sending progress-update message will slow down
+// 避免主线程接收过多进度更新消息而卡顿
 YCDownloader.setAvoidFrameDrop(true);
-// send progress update message interval at least 500ms
-// only valid when setAvoidFrameDrop(true)
+//接收进度更新间隔
 YCDownloader.setSendMessageInterval(500, TimeUnit.MILLISECONDS);
 
-// If false, all running tasks are in WAITING state
+// 如果为false，所有任务都在等待状态
 YCDownloaer.setAllowDownload(true)
 
-// Use configuration to update
+// 批量更新参数，如果需要一次更新多个参数，这个方法效率更高
 YCDownloader.updateByConfiguration(Configuration);
 ```
 
@@ -193,34 +187,34 @@ YCDownloader.updateByConfiguration(Configuration);
 
 **YCDownloader**: [`com.lyc.downloader.YCDownloader`](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/YCDownloader.java)
 
-Export main apis. 
+导出API。
 
 **DownloadListener**: [`com.lyc.downloader.DownloadListener`](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/DownloadListener.java)
 
-Callback of the download progress and state change of every downloadTask. **All methods are called in main thread.**
+监听进度更新。**所有的回调方法都在主线程调用。**
 
 **DownloadTasksChangeListener**: [`com.lyc.downloader.DownloadTasksChangeListener`](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/DownloadTasksChangeListener.java)
 
-Callback of the change in downloadTasks: created or removed. It's a good feature to implement a function like eventBus. **All methods are called in main thread.**
+当任务管理器的任务添加或移除时的回调，可以用来监听更新列表变化。**所有的回调方法都在主线程调用。**
 
 **SubmitListener**: [`com.lyc.downloader.SubmitListener`](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/SubmitListener.java)
 
-Notify task submit state: success or fail. **All methods are called in main thread.**
+通知提交任务成功或失败。 **所有的回调方法都在主线程调用。**
 
 **DownloadInfo**: [`com.lyc.downloader.db.DownloadInfo`](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/db/DownloadInfo.java)
 
-Database entity, also `Parcelable` to pass between **multi-process**.
+数据库实体类，也是 `Parcelable`类型，用于多进程通信。
 
 **Configuration**: [`com.lyc.downloader.Configuration`](https://github.com/SirLYC/YC-Downloader/blob/master/downloader/src/main/java/com/lyc/downloader/Configuration.java)
 
-An immutable class to pass params of downloader.
+一个不可变类型的class,定义参数。
 
 ## Permissions
 
 ```xml
-<!--required-->
+<!--必须有-->
 <uses-permission android:name="android.permission.INTERNET"/>
-<!--not required but important-->
+<!--没有会影响正常运行。6.0以上需要验证运行时权限-->
 <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
 <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
 ```

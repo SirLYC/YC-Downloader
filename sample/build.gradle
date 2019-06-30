@@ -12,9 +12,25 @@ android {
         versionName buildInfo['versionName']
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
+
+    signingConfigs {
+        release {
+            def signConfig = rootProject.file('keys/keystore.properties')
+            if (signConfig.exists()) {
+                Properties props = new Properties()
+                props.load(new FileInputStream(signConfig))
+                storeFile file(props['KEYSTORE_FILE'])
+                storePassword props['KEYSTORE_PWD']
+                keyAlias props['KEY_ALIAS']
+                keyPassword props['KEY_PWD']
+            }
+        }
+    }
+
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }

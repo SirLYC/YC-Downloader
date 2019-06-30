@@ -15,7 +15,7 @@ import java.util.Set;
  * @date 2019-05-10
  * @email kevinliu.sir@qq.com
  */
-public class DownloadListenerDispatcher extends IDownloadCallback.Stub {
+class DownloadListenerDispatcher extends IDownloadCallback.Stub {
     // if id == null: register for all id
     @SuppressLint("UseSparseArrays")
     private final Map<Long, Set<DownloadListener>> downloadListenerMap = new HashMap<>();

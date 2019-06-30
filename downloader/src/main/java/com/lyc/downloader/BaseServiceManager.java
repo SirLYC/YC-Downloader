@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Created by Liu Yuchuan on 2019/5/19.
  */
-public abstract class BaseServiceManager implements DownloadController, DownloadInfoProvider {
+abstract class BaseServiceManager implements DownloadController, DownloadInfoProvider {
     private static final int MAX_SUPPORT_TASK_COUNT = Runtime.getRuntime().availableProcessors() * 4;
     private static final long WAITING_TIME = TimeUnit.SECONDS.toNanos(6);
     final Context appContext;

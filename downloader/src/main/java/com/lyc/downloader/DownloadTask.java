@@ -1,6 +1,7 @@
 package com.lyc.downloader;
 
 import android.util.SparseArray;
+import android.webkit.MimeTypeMap;
 import androidx.annotation.IntDef;
 import androidx.annotation.WorkerThread;
 import com.lyc.downloader.db.DownloadInfo;
@@ -188,6 +189,21 @@ public class DownloadTask {
                     filename = DownloadStringUtil.parseFilenameFromUrl(response.request().url().toString());
                 if (filename.isEmpty()) {
                     filename = Constants.UNKNOWN_FILE_NAME;
+                }
+                MediaType mediaType = body.contentType();
+                String extension;
+                if (mediaType != null) {
+                    extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mediaType.toString());
+                } else {
+                    extension = MimeTypeMap.getFileExtensionFromUrl(response.request().url().toString());
+                }
+
+                if (extension != null && !filename.endsWith(extension)) {
+                    if (filename.endsWith(".")) {
+                        filename = filename + extension;
+                    } else {
+                        filename = filename + "." + extension;
+                    }
                 }
             }
 

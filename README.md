@@ -4,7 +4,9 @@
 
 [中文文档](https://github.com/SirLYC/YC-Downloader/blob/master/README-zh.md)
 
-A multi-thread, multi-task and multi-process downloader. It supports HTTP, download speed limit
+A multi-thread, multi-task and multi-process downloader. It supports HTTP, download speed limit.
+
+> An app using this library is available at [https://github.com/SirLYC/EveryDownload](https://github.com/SirLYC/EveryDownload)
 
 ## Features
 - [x] HTTP/HTTPS download

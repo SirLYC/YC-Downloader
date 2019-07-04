@@ -4,6 +4,8 @@
 
 多线程、多任务、多进程下载库，支持断点续传、限速等...
 
+> 一个使用这个库开发的完整的下载器App [https://github.com/SirLYC/EveryDownload](https://github.com/SirLYC/EveryDownload)
+
 ## Features
 - [x] HTTP/HTTPS下载
 - [x] 多线程下载
